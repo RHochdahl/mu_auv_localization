@@ -69,7 +69,7 @@ cov_mat = 0.05
 #  [19.     ,    -0.06760727,  1.35470647,  1.33599061]]))
 tags = genfromtxt('calibration.csv', delimiter=',')
 tags = tags[:, 0:4]
-tags[:, 1] += 0.3
+tags[:, 1] += 0.3   # to shift x-value according to gantry origin
 # print(tags)
 rviz = False
 
@@ -95,25 +95,32 @@ def callback(msg, tmp_list):
     # get length of message
     num_meas = len(msg.detections)
     orientation_yaw_pitch_roll = np.zeros((num_meas, 3))
+
     # if new measurement: update particles
     if num_meas >= 1:
         measurements = np.zeros((num_meas, 1 + PART_DIM))
         # get data from topic /tag_detection
-        if rviz == True:
+
+        if rviz:
             markerArray = MarkerArray()
+
         for i, tag in enumerate(msg.detections):
             tag_id = int(tag.id[0])
-            distance = np.array(
-                ([tag.pose.pose.pose.position.x, tag.pose.pose.pose.position.y, tag.pose.pose.pose.position.z]))
+            distance = np.array(([tag.pose.pose.pose.position.x,
+                                  tag.pose.pose.pose.position.y,
+                                  tag.pose.pose.pose.position.z]))
             measurements[i, 0] = np.linalg.norm(distance)
-            tmpquat = Quaternion(w=tag.pose.pose.pose.orientation.w, x=tag.pose.pose.pose.orientation.x,
-                                 y=tag.pose.pose.pose.orientation.y, z=tag.pose.pose.pose.orientation.z)
+            tmpquat = Quaternion(w=tag.pose.pose.pose.orientation.w,
+                                 x=tag.pose.pose.pose.orientation.x,
+                                 y=tag.pose.pose.pose.orientation.y,
+                                 z=tag.pose.pose.pose.orientation.z)
 
             orientation_yaw_pitch_roll[i, :] = tmpquat.inverse.yaw_pitch_roll
             index = np.where(tags[:, 0] == tag_id)
 
             measurements[i, 1:4] = tags[index, 1:4]
-            if rviz == True:
+
+            if rviz:
                 marker = Marker()
                 marker.header.frame_id = "global_tank"
                 marker.id = i
@@ -129,7 +136,8 @@ def callback(msg, tmp_list):
                 marker.pose.position.y = tags[index, 2][0]  # y
                 marker.pose.position.z = tags[index, 3][0]  # z
                 markerArray.markers.append(marker)
-        if rviz == True:
+
+        if rviz:
             # print(len(markerArray.markers))
             publisher_marker.publish(markerArray)
             # print(index)
@@ -139,17 +147,18 @@ def callback(msg, tmp_list):
     yaw = np.mean(orientation_yaw_pitch_roll[:,0])
     pitch = np.mean(orientation_yaw_pitch_roll[:, 1])
     roll = np.mean(orientation_yaw_pitch_roll[:, 2])
-    print(yaw*180/np.pi      )
+    print(yaw*180/np.pi)
     estimated_orientation = yaw_pitch_roll_to_quat(yaw, 0, 0)
 
     # calculate position as mean of particle positions
     estimated_position = particle_filter.estimate()
 
+    # [mm]
     x_mean = estimated_position[0] * 1000
     y_mean = estimated_position[1] * 1000
     z_mean = estimated_position[2] * 1000
 
-    # publish estimated_pose
+    # publish estimated_pose [m]
     position = PoseStamped()
     position.header.stamp = rospy.Time.now()
     position.header.frame_id = "global_tank"
@@ -158,7 +167,7 @@ def callback(msg, tmp_list):
     position.pose.position.z = z_mean/1000
     publisher_position.publish(position)
 
-    # publish estimated_pose in mavros to /mavros/vision_pose/pose
+    # publish estimated_pose [m] in mavros to /mavros/vision_pose/pose
     # this pose needs to be in ENU
     mavros_position = PoseStamped()
     mavros_position.header.stamp = rospy.Time.now()
@@ -183,7 +192,7 @@ def callback(msg, tmp_list):
                               "world")
     """
 
-    if rviz == True:
+    if rviz:
         # publish particles as PoseArray
         pose_array = PoseArray()
         pose_array.header.stamp = rospy.Time.now()
@@ -210,13 +219,17 @@ def callback(msg, tmp_list):
 
 
 def main():
+
     rospy.init_node('particle_filter_node')
+
     particle_filter = particle_class.ParticleFilter(NUM_P, PART_DIM, x_range, y_range, z_range, cov_mat)
+
     publisher_position = rospy.Publisher('estimated_pose', PoseStamped, queue_size=1)
     publisher_mavros = rospy.Publisher('/mavros/vision_pose/pose', PoseStamped, queue_size=1)
     publisher_particles = rospy.Publisher('particle_poses', PoseArray, queue_size=1)
     publisher_marker = rospy.Publisher('Sphere', MarkerArray, queue_size=1)
     broadcaster = tf.TransformBroadcaster()
+
     rospy.Subscriber("/tag_detections", AprilTagDetectionArray, callback,
                      [particle_filter, publisher_position, publisher_mavros, publisher_particles, broadcaster,
                       publisher_marker], queue_size=1)

@@ -1,5 +1,4 @@
 from numpy.random import uniform
-from filterpy.monte_carlo import systematic_resample
 from numpy.linalg import norm
 from numpy.random import randn
 import scipy.stats
@@ -55,7 +54,8 @@ class ParticleFilter(object):
         self.particles[:, 2] += noise_z
 
     def update(self, measurements):
-        """"""
+        """uses measurement to calculate weights of particles proportional to how likely state represented by particle is.
+        Using these weights, resample is called"""
 
         # get number measurements (number of seen tags), dimension of each measurement is 1 -> distance to tag
         measurements=measurements.reshape((-1,4))
@@ -89,7 +89,7 @@ class ParticleFilter(object):
         # print "after resampling: " + str(self.particles)
 
     def estimate(self):
-
+        """ returns mean x/y/z value of all particles"""
         position = np.array(([np.mean(self.particles[:, 0]), np.mean(self.particles[:, 1]),
                               np.mean(self.particles[:, 2])]))
         return position
