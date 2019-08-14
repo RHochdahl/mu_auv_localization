@@ -72,7 +72,7 @@ cov_mat = 0.05
 # /home/hippoc/.ros
 # /home/hippoc/catkin_ws/src/localisation/scripts
 # print os.getcwd()
-path_to_calibration = '../catkin_ws/src/localisation/scripts'
+path_to_calibration = '../ros_catkin_ws/src/localisation/scripts'   # on hippoc: /catkin_ws
 tags = genfromtxt(path_to_calibration + '/calibration.csv', delimiter=',')
 
 tags = tags[:, 0:4]
