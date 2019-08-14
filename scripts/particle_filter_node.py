@@ -11,6 +11,7 @@ from apriltag_ros.msg import AprilTagDetectionArray
 from apriltag_ros.msg import AprilTagDetection
 from visualization_msgs.msg import Marker, MarkerArray
 from numpy import genfromtxt
+import os
 
 NUM_P = 100
 PART_DIM = 3  # x, y, z
@@ -67,7 +68,13 @@ cov_mat = 0.05
 #  [17.     ,     0.53355578,  1.131107  ,  1.31822385],
 #  [18.     ,     0.34682712,  1.36617877,  1.32839176],
 #  [19.     ,    -0.06760727,  1.35470647,  1.33599061]]))
-tags = genfromtxt('calibration.csv', delimiter=',')
+
+# /home/hippoc/.ros
+# /home/hippoc/catkin_ws/src/localisation/scripts
+# print os.getcwd()
+path_to_calibration = '../catkin_ws/src/localisation/scripts'
+tags = genfromtxt(path_to_calibration + '/calibration.csv', delimiter=',')
+
 tags = tags[:, 0:4]
 tags[:, 1] += 0.3   # to shift x-value according to gantry origin
 # print(tags)
