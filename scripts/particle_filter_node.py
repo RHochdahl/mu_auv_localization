@@ -72,7 +72,8 @@ cov_mat = 0.05
 # /home/hippoc/.ros
 # /home/hippoc/catkin_ws/src/localisation/scripts
 # print os.getcwd()
-path_to_calibration = '../ros_catkin_ws/src/localisation/scripts'   # on hippoc: /catkin_ws
+#path_to_calibration = '../ros_catkin_ws/src/localisation/scripts'   # on hippoc-companion
+path_to_calibration = '../catkin_ws/src/localisation/scripts'    # on hippoc
 tags = genfromtxt(path_to_calibration + '/calibration.csv', delimiter=',')
 
 tags = tags[:, 0:4]
@@ -154,7 +155,7 @@ def callback(msg, tmp_list):
     yaw = np.mean(orientation_yaw_pitch_roll[:,0])
     pitch = np.mean(orientation_yaw_pitch_roll[:, 1])
     roll = np.mean(orientation_yaw_pitch_roll[:, 2])
-    print(yaw*180/np.pi)
+    # print(yaw*180/np.pi)
     estimated_orientation = yaw_pitch_roll_to_quat(yaw, 0, 0)
 
     # calculate position as mean of particle positions
@@ -165,6 +166,7 @@ def callback(msg, tmp_list):
     y_mean = estimated_position[1] * 1000
     z_mean = estimated_position[2] * 1000
 
+
     # publish estimated_pose [m]
     position = PoseStamped()
     position.header.stamp = rospy.Time.now()
@@ -174,6 +176,7 @@ def callback(msg, tmp_list):
     position.pose.position.z = z_mean/1000
     publisher_position.publish(position)
 
+    """
     # publish estimated_pose [m] in mavros to /mavros/vision_pose/pose
     # this pose needs to be in ENU
     mavros_position = PoseStamped()
@@ -189,6 +192,22 @@ def callback(msg, tmp_list):
     mavros_position.pose.orientation.z = estimated_orientation[3]
 
     publisher_mavros.publish(mavros_position)
+    """
+    # For Debugging
+    mavros_position = PoseStamped()
+    mavros_position.header.stamp = rospy.Time.now()
+    mavros_position.header.frame_id = "map"
+    mavros_position.pose.position.x = 1.0 + np.random.normal(0, 0.01)
+    mavros_position.pose.position.y = 2.0 + np.random.normal(0, 0.01)
+    mavros_position.pose.position.z = 3.0 + np.random.normal(0, 0.01)
+
+    mavros_position.pose.orientation.w = 1.0
+    mavros_position.pose.orientation.x = 2.0
+    mavros_position.pose.orientation.y = 3.0
+    mavros_position.pose.orientation.z = 4.0
+
+    publisher_mavros.publish(mavros_position)
+
 
     """
     # publish transform
