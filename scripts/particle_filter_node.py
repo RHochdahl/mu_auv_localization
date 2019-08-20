@@ -176,7 +176,7 @@ def callback(msg, tmp_list):
     position.pose.position.z = z_mean/1000
     publisher_position.publish(position)
 
-    """
+
     # publish estimated_pose [m] in mavros to /mavros/vision_pose/pose
     # this pose needs to be in ENU
     mavros_position = PoseStamped()
@@ -192,21 +192,21 @@ def callback(msg, tmp_list):
     mavros_position.pose.orientation.z = estimated_orientation[3]
 
     publisher_mavros.publish(mavros_position)
-    """
+
     # For Debugging
-    mavros_position = PoseStamped()
-    mavros_position.header.stamp = rospy.Time.now()
-    mavros_position.header.frame_id = "map"
-    mavros_position.pose.position.x = 1.0 + np.random.normal(0, 0.01)
-    mavros_position.pose.position.y = 2.0 + np.random.normal(0, 0.01)
-    mavros_position.pose.position.z = 3.0 + np.random.normal(0, 0.01)
+    # mavros_position = PoseStamped()
+    # mavros_position.header.stamp = rospy.Time.now()
+    # mavros_position.header.frame_id = "map"
+    # mavros_position.pose.position.x = 1.0 + np.random.normal(0, 0.01)
+    # mavros_position.pose.position.y = 2.0 + np.random.normal(0, 0.01)
+    # mavros_position.pose.position.z = 3.0 + np.random.normal(0, 0.01)
+    #
+    # mavros_position.pose.orientation.w = 1.0
+    # mavros_position.pose.orientation.x = 2.0
+    # mavros_position.pose.orientation.y = 3.0
+    # mavros_position.pose.orientation.z = 4.0
 
-    mavros_position.pose.orientation.w = 1.0
-    mavros_position.pose.orientation.x = 2.0
-    mavros_position.pose.orientation.y = 3.0
-    mavros_position.pose.orientation.z = 4.0
-
-    publisher_mavros.publish(mavros_position)
+    # publisher_mavros.publish(mavros_position)
 
 
     """
