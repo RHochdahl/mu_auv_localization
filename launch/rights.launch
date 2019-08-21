@@ -1,0 +1,3 @@
+<launch>
+    <node name="test" pkg="localisation" type="give_rights.sh" />
+</launch>
