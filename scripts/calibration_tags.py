@@ -8,15 +8,17 @@ import tf
 from pyquaternion import Quaternion
 
 # id,x,y,z,N,seen
-array_tags = np.zeros((20, 6))
-for i in range(20):
+number_of_tags = 45
+array_tags = np.zeros((number_of_tags, 6))
+for i in range(number_of_tags):
     array_tags[i, 0] = i
 print(array_tags)
+offset_to_top_of_water = 0.0
 
 
 def callback_april(msg):
     """"""
-    global array_tags
+    global array_tags, number_of_tags
     num_meas = len(msg.detections)
     what_was_in_msg = list()
     if num_meas >= 1:
@@ -25,9 +27,9 @@ def callback_april(msg):
             what_was_in_msg.append(tag_id)
             array_tags[tag_id, 1] = tag.pose.pose.pose.position.x
             array_tags[tag_id, 2] = tag.pose.pose.pose.position.y
-            array_tags[tag_id, 3] = tag.pose.pose.pose.position.z
+            array_tags[tag_id, 3] = tag.pose.pose.pose.position.z + offset_to_top_of_water
 
-    for i in range(20):
+    for i in range(number_of_tags):
         if i in what_was_in_msg:
             array_tags[i, 5] = 1
         else:
@@ -36,14 +38,14 @@ def callback_april(msg):
     pass
 
 
-mean_array = np.zeros((20, 5))
-for i in range(20):
+mean_array = np.zeros((number_of_tags, 5))
+for i in range(number_of_tags):
     mean_array[i, 0] = i
 
 
 def callback_gantry(msg):
     """"""
-    global array_tags, mean_array
+    global array_tags, mean_array, number_of_tags
     currently_seen = array_tags[np.where(array_tags[:, 5] == 1), :]
     qz_90n = Quaternion(axis=[0, 0, 1], angle=np.pi / 2)
     for i in range(currently_seen[0].shape[0]):
@@ -62,16 +64,17 @@ def callback_gantry(msg):
 
 
 def main():
-    global mean_array
+    global mean_array, number_of_tags
     rospy.init_node('particle_filter_node')
     rospy.Subscriber("/tag_detections", AprilTagDetectionArray, callback_april, queue_size=1)
     rospy.Subscriber("/gantry_position", Gantry, callback_gantry, queue_size=1)
 
     while not rospy.is_shutdown():
         pass
-    for i in range(20):
+    print(mean_array)
+    for i in range(number_of_tags):
         mean_array[i, 1:5] = mean_array[i, 1:5] / float(mean_array[i, 4])
-    np.savetxt("calibration.csv",mean_array,delimiter=',')
+    np.savetxt("calibration.csv", mean_array, delimiter=',')
     print(mean_array)
 
 

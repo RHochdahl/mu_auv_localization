@@ -12,10 +12,10 @@ class ParticleFilter(object):
         self.NUM_P = NUM_P
         self.PART_DIM = PART_DIM
         self.particles = self.create_uniform_particles(x_range, y_range, z_range)
-        p=1
-        self.std_x = 0.05*p
-        self.std_y = 0.05*p
-        self.std_z = 0.01*p  # should be smaller than std_x and std_y
+        p = 1
+        self.std_x = 0.05 * p
+        self.std_y = 0.05 * p
+        self.std_z = 0.01 * p  # should be smaller than std_x and std_y
         self.cov_mat_resample = cov_mat  # tuning knob for resampling
         # print(self.particles)
         # exit()
@@ -56,9 +56,8 @@ class ParticleFilter(object):
     def update(self, measurements):
         """uses measurement to calculate weights of particles proportional to how likely state represented by particle is.
         Using these weights, resample is called"""
-
         # get number measurements (number of seen tags), dimension of each measurement is 1 -> distance to tag
-        measurements=measurements.reshape((-1,4))
+        measurements = measurements.reshape((-1, 4))
         num_meas = measurements.shape[0]
         distances_measured = measurements[:, 0]
         # measurements [ri,xi,yi,zi] i=0 to number of measurements
@@ -80,6 +79,7 @@ class ParticleFilter(object):
 
         for i in range(self.NUM_P):
             weights[i] = multivariate_normal.pdf(distances_particles[i], mean=distances_measured, cov=cov_matrix)
+            #print("distancesParticles",distances_particles[i],distances_measured)
         weights += 1.e-300  # avoid round-off to zero
         weights /= sum(weights)  # normalize
         # print weights

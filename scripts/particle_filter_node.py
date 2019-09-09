@@ -10,6 +10,7 @@ from geometry_msgs.msg import Pose, PoseArray, PoseStamped
 from apriltag_ros.msg import AprilTagDetectionArray
 from apriltag_ros.msg import AprilTagDetection
 from visualization_msgs.msg import Marker, MarkerArray
+from mavros_msgs.srv import SetMode
 from numpy import genfromtxt
 import os
 
@@ -21,64 +22,21 @@ z_range = (0, 1.5)
 # cov_mat = 1.5
 # cov_mat = 0.05
 cov_mat = 0.05
-# tags = np.array(([[0, -0.509, 1.643, 0],
-#                   [1, -0.509, 1.23, 0],
-#                   [2, -0.277, 1.045, 0],
-#                   [3, 0.279, 1.045, 0],
-#                   [4, 0.513, 1.045, 0],
-#                   [5, 0.513, 1.645, 0],
-#                   [6, 0, 0.774, 0],
-#                   [7, 0, 0.256, 0],
-#                   [8, -0.722, 0, 0],
-#                   [9, -0.36, 0, 0],
-#                   [10, 0.358, 0, 0],
-#                   [11, 0.721, 0, 0],
-#                   [12, 0, -0.364, 0],
-#                   [13, 0, -0.783, 0],
-#                   [14, -0.522, -1.649, 0],
-#                   [15, -0.522, -1.236, 0],
-#                   [16, -0.278, -1.051, 0],
-#                   [17, 0.28, -1.051, 0],
-#                   [18, 0.527, -1.051, 0],
-#                   [19, 0.527, -1.651, 0]]))
-# qx_180 = Quaternion(axis=[1, 0, 0], angle=np.pi)
-# qz_90n = Quaternion(axis=[0, 0, 1], angle=-np.pi / 2)
-#
-# dreh = qx_180 * qz_90n
-# for i in range(tags.shape[0]):
-#     tags[i, 1:5] = dreh.rotate(tags[i, 1:5]) + np.asarray([1.61, 0.861, 1.4])
-# print(tags)
-# tags = np.array(([[ 0. ,         3.23831319,  0.36636964,  1.31201144  ],
-#  [ 1.   ,       2.82066553,  0.36380847,  1.30318445],
-#  [ 2.    ,      2.63517697,  0.58942749,  1.30350728],
-#  [ 3.     ,     2.63489789,  1.14710925,  1.30307401],
-#  [ 4.     ,     2.81139968,  1.37975452,  1.30343474],
-#  [ 5.     ,     3.23084454,  1.38791825,  1.31764983],
-#  [ 6.     ,     2.36160292,  0.86320916,  1.30411645],
-#  [ 7.     ,     1.84235159,  0.85791936,  1.30362097],
-#  [ 8.     ,     1.59350598,  0.13490855,  1.30283129],
-#  [ 9.     ,     1.59050894,  0.49519434,  1.3040148],
-#  [10.     ,     1.58441478,  1.21770259,  1.30707124],
-#  [11.     ,     1.57988579,  1.58039629,  1.30724808],
-#  [12.     ,     1.3243854 ,  0.85630028,  1.30635755],
-#  [13.     ,     0.80354831,  0.85595953,  1.30862898],
-#  [14.     ,    -0.05638245,  0.31113967,  1.3248386],
-#  [15.     ,     0.35658294,  0.32651376,  1.30891262],
-#  [16.     ,     0.53907469,  0.57205991,  1.30846051],
-#  [17.     ,     0.53355578,  1.131107  ,  1.31822385],
-#  [18.     ,     0.34682712,  1.36617877,  1.32839176],
-#  [19.     ,    -0.06760727,  1.35470647,  1.33599061]]))
+old_yaw = 0
+set_mode_srv = rospy.ServiceProxy('mavros/set_mode', SetMode)
+res = set_mode_srv(0, " OFFBOARD")
 
 # /home/hippoc/.ros
 # /home/hippoc/catkin_ws/src/localisation/scripts
 # print os.getcwd()
-path_to_calibration = '../ros_catkin_ws/src/localisation/scripts'   # on hippoc-companion
+path_to_calibration = '../ros_catkin_ws/src/localisation/scripts'  # on hippoc-companion
 # path_to_calibration = '../scripts'  # on computer
-#path_to_calibration = '../catkin_ws/src/localisation/scripts'    # on hippoc
+# path_to_calibration = '../catkin_ws/src/localisation/scripts'    # on hippoc
 tags = genfromtxt(path_to_calibration + '/calibration.csv', delimiter=',')
 
 tags = tags[:, 0:4]
-tags[:, 1] += 0.3   # to shift x-value according to gantry origin
+# tags[:, 1] += 0.08  # to shift x-value according to gantry origin
+# tags[:,2] += 0.02  # to shift y-value according to gantry origin
 # print(tags)
 rviz = False
 
@@ -96,7 +54,9 @@ def yaw_pitch_roll_to_quat(yaw, pitch, roll):
 
 def callback(msg, tmp_list):
     """"""
-    [particle_filter, publisher_position, publisher_mavros, publisher_particles, broadcaster, publisher_marker] = tmp_list
+    global old_yaw
+    [particle_filter, publisher_position, publisher_mavros, publisher_particles, broadcaster,
+     publisher_marker] = tmp_list
 
     # particle filter algorithm
     particle_filter.predict()  # move particles
@@ -128,7 +88,7 @@ def callback(msg, tmp_list):
             index = np.where(tags[:, 0] == tag_id)
 
             measurements[i, 1:4] = tags[index, 1:4]
-
+            # print(measurements[i, 1:4])
             if rviz:
                 marker = Marker()
                 marker.header.frame_id = "global_tank"
@@ -151,47 +111,60 @@ def callback(msg, tmp_list):
             publisher_marker.publish(markerArray)
             # print(index)
         particle_filter.update(measurements)
+        yaw = np.mean(orientation_yaw_pitch_roll[:, 0])
+        pitch = np.mean(orientation_yaw_pitch_roll[:, 1])
+        roll = np.mean(orientation_yaw_pitch_roll[:, 2])
+    else:
+        yaw = old_yaw
+    old_yaw = yaw
+    # print "reale messungen: " + str(measurements)
 
-        # print "reale messungen: " + str(measurements)
-    yaw = np.mean(orientation_yaw_pitch_roll[:,0])
-    pitch = np.mean(orientation_yaw_pitch_roll[:, 1])
-    roll = np.mean(orientation_yaw_pitch_roll[:, 2])
-    # print(yaw*180/np.pi)
-    estimated_orientation = yaw_pitch_roll_to_quat(yaw, 0, 0)
-
+    print("Angle yaw:", yaw * 180 / np.pi)
+    estimated_orientation = yaw_pitch_roll_to_quat(-(yaw - np.pi / 2), 0, 0)
+    # estimated_orientation = yaw_pitch_roll_to_quat(yaw, 0, 0)#evtl wrong
     # calculate position as mean of particle positions
     estimated_position = particle_filter.estimate()
 
     # [mm]
-    x_mean = estimated_position[0] * 1000
-    y_mean = estimated_position[1] * 1000
-    z_mean = estimated_position[2] * 1000
-
-
-    # publish estimated_pose [m]
-    position = PoseStamped()
-    position.header.stamp = rospy.Time.now()
-    position.header.frame_id = "global_tank"
-    position.pose.position.x = x_mean/1000
-    position.pose.position.y = y_mean/1000
-    position.pose.position.z = z_mean/1000
-    publisher_position.publish(position)
-
+    x_mean_ned = estimated_position[0] * 1000  # global Tank Koordinate System(NED)
+    y_mean_ned = estimated_position[1] * 1000
+    z_mean_ned = estimated_position[2] * 1000
 
     # publish estimated_pose [m] in mavros to /mavros/vision_pose/pose
     # this pose needs to be in ENU
     mavros_position = PoseStamped()
     mavros_position.header.stamp = rospy.Time.now()
     mavros_position.header.frame_id = "map"
-    mavros_position.pose.position.x = y_mean/1000
-    mavros_position.pose.position.y = x_mean/1000
-    mavros_position.pose.position.z = - z_mean/1000
+    mavros_position.pose.position.x = y_mean_ned / 1000  # NED Coordinate to ENU(ROS)
+    mavros_position.pose.position.y = x_mean_ned / 1000
+    mavros_position.pose.position.z = - z_mean_ned / 1000
 
-    mavros_position.pose.orientation.w = estimated_orientation[0]
-    mavros_position.pose.orientation.x = estimated_orientation[1]
-    mavros_position.pose.orientation.y = estimated_orientation[2]
-    mavros_position.pose.orientation.z = estimated_orientation[3]
+    mavros_position.pose.orientation.w = estimated_orientation.w
+    mavros_position.pose.orientation.x = estimated_orientation.x
+    mavros_position.pose.orientation.y = estimated_orientation.y
+    mavros_position.pose.orientation.z = estimated_orientation.z
 
+    # publish estimated_pose [m]
+    position = PoseStamped()
+    position.header.stamp = rospy.Time.now()
+    position.header.frame_id = "global_tank"  # ned
+    position.pose.position.x = x_mean_ned / 1000
+    position.pose.position.y = y_mean_ned / 1000
+    position.pose.position.z = z_mean_ned / 1000
+    estimated_orientation = yaw_pitch_roll_to_quat(yaw, 0, 0)
+    position.pose.orientation.w = estimated_orientation.w
+    position.pose.orientation.x = estimated_orientation.x
+    position.pose.orientation.y = estimated_orientation.y
+    position.pose.orientation.z = estimated_orientation.z
+    publisher_position.publish(position)
+
+    # yaw = 0 / 180.0 * np.pi
+    # tmp = yaw_pitch_roll_to_quat(-(yaw-np.pi/2), 0, 0)
+    # print(tmp)
+    # mavros_position.pose.orientation.w = tmp.w
+    # mavros_position.pose.orientation.x = tmp.x
+    # mavros_position.pose.orientation.y = tmp.y
+    # mavros_position.pose.orientation.z = tmp.z
     publisher_mavros.publish(mavros_position)
 
     # For Debugging
@@ -209,7 +182,6 @@ def callback(msg, tmp_list):
 
     # publisher_mavros.publish(mavros_position)
 
-
     """
     # publish transform
     broadcaster.sendTransform((estimated_position[0], estimated_position[1], estimated_position[2]),
@@ -224,9 +196,9 @@ def callback(msg, tmp_list):
         pose_array = PoseArray()
         pose_array.header.stamp = rospy.Time.now()
         pose_array.header.frame_id = "global_tank"
-        for i in range(num_meas):
-            print(orientation_yaw_pitch_roll[i, 0] * 180 / np.pi, orientation_yaw_pitch_roll[i, 1] * 180 / np.pi,
-                  orientation_yaw_pitch_roll[i, 2] * 180 / np.pi)
+        # for i in range(num_meas):
+        #     print(orientation_yaw_pitch_roll[i, 0] * 180 / np.pi, orientation_yaw_pitch_roll[i, 1] * 180 / np.pi,
+        #           orientation_yaw_pitch_roll[i, 2] * 180 / np.pi)
         print("done")
         for i in range(particle_filter.NUM_P):
             pose = Pose()
@@ -246,7 +218,6 @@ def callback(msg, tmp_list):
 
 
 def main():
-
     rospy.init_node('particle_filter_node')
 
     particle_filter = particle_class.ParticleFilter(NUM_P, PART_DIM, x_range, y_range, z_range, cov_mat)
