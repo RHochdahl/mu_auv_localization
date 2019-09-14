@@ -13,7 +13,7 @@ array_tags = np.zeros((number_of_tags, 6))
 for i in range(number_of_tags):
     array_tags[i, 0] = i
 print(array_tags)
-offset_to_top_of_water = 0.0
+offset_to_top_of_water = 0
 
 
 def callback_april(msg):
@@ -49,15 +49,15 @@ def callback_gantry(msg):
     currently_seen = array_tags[np.where(array_tags[:, 5] == 1), :]
     qz_90n = Quaternion(axis=[0, 0, 1], angle=np.pi / 2)
     for i in range(currently_seen[0].shape[0]):
-        print(currently_seen[0, i, 1:4])
+        #print(currently_seen[0, i, 1:4])
         currently_seen[0, i, 1:4] = qz_90n.rotate(currently_seen[0, i, 1:4])
-        print(currently_seen[0, i, 1:4])
+        #print(currently_seen[0, i, 1:4])
         mean_array[int(currently_seen[0, i, 0]), 1] = mean_array[int(currently_seen[0, i, 0]), 1] + currently_seen[
-            0, i, 1] + msg.position.x / 1000.0
+            0, i, 1] + msg.position.x
         mean_array[int(currently_seen[0, i, 0]), 2] = mean_array[int(currently_seen[0, i, 0]), 2] + currently_seen[
-            0, i, 2] + msg.position.y / 1000.0
+            0, i, 2] + msg.position.y
         mean_array[int(currently_seen[0, i, 0]), 3] = mean_array[int(currently_seen[0, i, 0]), 3] + currently_seen[
-            0, i, 3] + msg.position.z / 1000.0
+            0, i, 3] + msg.position.z
         mean_array[int(currently_seen[0, i, 0]), 4] = mean_array[int(currently_seen[0, i, 0]), 4] + 1
     # print(mean_array)
     pass
@@ -67,7 +67,7 @@ def main():
     global mean_array, number_of_tags
     rospy.init_node('particle_filter_node')
     rospy.Subscriber("/tag_detections", AprilTagDetectionArray, callback_april, queue_size=1)
-    rospy.Subscriber("/gantry_position", Gantry, callback_gantry, queue_size=1)
+    rospy.Subscriber("/gantry_in_m", Gantry, callback_gantry, queue_size=1)
 
     while not rospy.is_shutdown():
         pass

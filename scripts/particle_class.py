@@ -88,7 +88,7 @@ class ParticleFilter(object):
         self.resample(weights)
         # print "after resampling: " + str(self.particles)
 
-    def estimate(self):
+    def get_position_estimate(self):
         """ returns mean x/y/z value of all particles"""
         position = np.array(([np.mean(self.particles[:, 0]), np.mean(self.particles[:, 1]),
                               np.mean(self.particles[:, 2])]))
