@@ -115,8 +115,6 @@ class ExtendedKalmanFilter(object):
         # get new measurement
         z_meas = z_meas_tags[:, 0].reshape(num_meas, 1)
 
-        # iterate through all tx-rss-values
-        # for itx in range(self.__tx_num):
         # estimate measurement from x_est
         z_est = self.h(self.__x_est, z_meas_tags)
         z_tild = z_meas - z_est
@@ -141,6 +139,5 @@ class ExtendedKalmanFilter(object):
     
         self.__p_mat = np.dot((self.__i_mat - np.dot(k_mat[:, b_tag_in_range], h_jac_mat[:, b_tag_in_range])), self.__p_mat)  # = (I-KH)*P
 
-        #print("x_up= " + str(self.__x_est.transpose()))
         return True
 
