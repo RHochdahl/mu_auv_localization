@@ -139,7 +139,7 @@ class ExtendedKalmanFilter(object):
     
         self.__x_est = self.__x_est + np.dot(k_mat[:, b_tag_in_range], z_tild[b_tag_in_range,0])  # = x_est + k * y_tild
     
-        self.__p_mat = np.dot((self.__i_mat - np.dot(k_mat[:, b_tag_in_range], h_jac_mat[:, b_tag_in_range])), self.__p_mat  # = (I-KH)*P
+        self.__p_mat = np.dot((self.__i_mat - np.dot(k_mat[:, b_tag_in_range], h_jac_mat[:, b_tag_in_range])), self.__p_mat)  # = (I-KH)*P
 
         #print("x_up= " + str(self.__x_est.transpose()))
         return True
