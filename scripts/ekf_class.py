@@ -28,6 +28,7 @@ class ExtendedKalmanFilter(object):
         # --> see measurement_covariance_model
         self.__sig_r = 1
         self.__r_mat = self.__sig_r ** 2
+        self.__max_dist_to_tag  = 1.5
 
         # initial values and system dynamic (=eye)
         self.__i_mat = np.eye(3)
@@ -119,34 +120,26 @@ class ExtendedKalmanFilter(object):
         # estimate measurement from x_est
         z_est = self.h(self.__x_est, z_meas_tags)
         z_tild = z_meas - z_est
-        #print("zmeas = " + str(z_meas.transpose()))
-        #print("yest = " + str(y_est.transpose()))
-        #print("ytild = " + str(y_tild.transpose()))
+        
         # calc K-gain
         h_jac_mat = self.h_jacobian(self.__x_est, z_meas_tags)
 
-        # iterate through measurements for serial update
 
+        k_mat = np.zeros((3,num_meas))
+        r_mat_temp = np.eye(num_meas) * self.__r_mat  # same measurement noise for all measurements, for the moment
+
+        s_mat = np.dot(h_jac_mat, np.dot(self.__p_mat, h_jac_mat.transpose())) + r_mat_temp
+        s_diag = np.diag(s_mat)
+        # compute k_mat in an interative way
         for i_tag in range(num_meas):
-            if (z_meas[i_tag] > 1.5):
-                #print("skiptag:",z_meas[i_tag])
-                continue
+            k_mat[:,i_tag] = np.dot(self.__p_mat, h_jac_mat[:,i_tag].transpose()) / s_diag[i_tag]  # 1/s scalar since s_mat is dim = 1x1
 
-            h_jac_red = h_jac_mat[i_tag, 0:3].reshape((1,3))  # [tag X 3]--> [1x3]
-            r_red = self.__r_mat  # already 1x1
-            z_tild_red = z_tild[i_tag, 0]
-            #print(i_tag)
-            #print(y_tild_red)
-            s_mat = np.dot(h_jac_red, np.dot(self.__p_mat, h_jac_red.transpose())) + r_red  # = H * P * H^t + R
-            # print("smat = " + str(s_mat))
-
-            k_mat = np.dot(self.__p_mat, h_jac_red.transpose()) / s_mat  # 1/s scalar since s_mat is dim = 1x1
-            #print(i_tag)
-            #print("k_mat = " + str(k_mat.transpose()))
-            #print("y_tild = " + str(y_tild_red))
-            self.__x_est = self.__x_est + k_mat * z_tild_red  # = x_est + k * y_tild
-            # self.__x_est[2, 0] = np.abs(self.__x_est[2, 0])
-            self.__p_mat = (self.__i_mat - np.dot(k_mat, h_jac_red)) * self.__p_mat  # = (I-KH)*P
+        # check distance to tag and reject far away tags
+        b_tag_in_range = z_meas <= self.__max_dist_to_tag
+    
+        self.__x_est = self.__x_est + np.dot(k_mat[:, b_tag_in_range], z_tild[b_tag_in_range,0])  # = x_est + k * y_tild
+    
+        self.__p_mat = np.dot((self.__i_mat - np.dot(k_mat[:, b_tag_in_range], h_jac_mat[:, b_tag_in_range])), self.__p_mat  # = (I-KH)*P
 
         #print("x_up= " + str(self.__x_est.transpose()))
         return True
