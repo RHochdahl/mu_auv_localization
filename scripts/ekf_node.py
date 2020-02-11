@@ -30,8 +30,8 @@ old_yaw = 0
 # /home/hippoc/catkin_ws/src/localisation/scripts
 # print os.getcwd()
 # path_to_calibration = '../ros_catkin_ws/src/localisation/scripts'  # on hippoc-companion
-# path_to_calibration = '../scripts'  # on computer
-path_to_calibration = '../catkin_ws/src/muAUV-localization/scripts'    # on hippoc
+path_to_calibration = '../scripts'  # on computer
+# path_to_calibration = '../catkin_ws/src/muAUV-localization/scripts'    # on hippoc
 tags = genfromtxt(path_to_calibration + '/calibration.csv', delimiter=',')
 
 tags = tags[:, 0:4]
