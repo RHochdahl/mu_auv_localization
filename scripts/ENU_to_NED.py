@@ -3,13 +3,13 @@ import numpy as np
 
 from pyquaternion import Quaternion
 import rospy
-import tf
+#import tf
 
 from geometry_msgs.msg import Pose, PoseArray, PoseStamped
-from visualization_msgs.msg import Marker, MarkerArray
-from numpy import genfromtxt
-import os
-import matplotlib.pyplot as plt
+#from visualization_msgs.msg import Marker, MarkerArray
+#from numpy import genfromtxt
+#import os
+#import matplotlib.pyplot as plt
 
 publisher_position_boat_NED = rospy.Publisher("/mavros/local_position/pose_NED", PoseStamped, queue_size=1)
 
