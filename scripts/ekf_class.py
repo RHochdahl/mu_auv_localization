@@ -130,13 +130,16 @@ class ExtendedKalmanFilter(object):
         s_diag = np.diag(s_mat)
         # compute k_mat in an interative way
         for i_tag in range(num_meas):
-            k_mat[:,i_tag] = np.dot(self.__p_mat, h_jac_mat[:,i_tag].transpose()) / s_diag[i_tag]  # 1/s scalar since s_mat is dim = 1x1
+            #print(h_jac_mat)
+            k_mat[:,i_tag] = np.dot(self.__p_mat, h_jac_mat[i_tag,:].transpose()) / s_diag[i_tag]  # 1/s scalar since s_mat is dim = 1x1
 
         # check distance to tag and reject far away tags
         b_tag_in_range = z_meas <= self.__max_dist_to_tag
-    
-        self.__x_est = self.__x_est + np.dot(k_mat[:, b_tag_in_range], z_tild[b_tag_in_range,0])  # = x_est + k * y_tild
-    
+        print(k_mat[:, b_tag_in_range[:,0]].shape)
+        print(z_tild[b_tag_in_range].shape)
+        print( np.dot(k_mat[:, b_tag_in_range[:,0]], z_tild[b_tag_in_range]).shape)
+        print((self.__x_est + np.dot(k_mat[:, b_tag_in_range[:,0]], z_tild[b_tag_in_range].transpose())).shape)
+        self.__x_est = self.__x_est + np.dot(k_mat[:, b_tag_in_range[:,0]], z_tild[b_tag_in_range])  # = x_est + k * y_tild
         self.__p_mat = np.dot((self.__i_mat - np.dot(k_mat[:, b_tag_in_range], h_jac_mat[:, b_tag_in_range])), self.__p_mat)  # = (I-KH)*P
 
         return True

@@ -1,6 +1,6 @@
 from apriltag_ros.msg import AprilTagDetectionArray
 from apriltag_ros.msg import AprilTagDetection
-from gantry_msgs.msg import Gantry
+from gantry_control_ros.msg import gantry
 import numpy as np
 
 import rospy
@@ -8,7 +8,7 @@ import tf
 from pyquaternion import Quaternion
 
 # id,x,y,z,N,seen
-number_of_tags = 45
+number_of_tags = 63
 array_tags = np.zeros((number_of_tags, 6))
 for i in range(number_of_tags):
     array_tags[i, 0] = i
@@ -53,11 +53,11 @@ def callback_gantry(msg):
         currently_seen[0, i, 1:4] = qz_90n.rotate(currently_seen[0, i, 1:4])
         #print(currently_seen[0, i, 1:4])
         mean_array[int(currently_seen[0, i, 0]), 1] = mean_array[int(currently_seen[0, i, 0]), 1] + currently_seen[
-            0, i, 1] + msg.position.x
+            0, i, 1] + msg.pos_gantry.x
         mean_array[int(currently_seen[0, i, 0]), 2] = mean_array[int(currently_seen[0, i, 0]), 2] + currently_seen[
-            0, i, 2] + msg.position.y
+            0, i, 2] + msg.pos_gantry.y
         mean_array[int(currently_seen[0, i, 0]), 3] = mean_array[int(currently_seen[0, i, 0]), 3] + currently_seen[
-            0, i, 3] + msg.position.z
+            0, i, 3] + msg.pos_gantry.z
         mean_array[int(currently_seen[0, i, 0]), 4] = mean_array[int(currently_seen[0, i, 0]), 4] + 1
     # print(mean_array)
     pass
@@ -67,7 +67,7 @@ def main():
     global mean_array, number_of_tags
     rospy.init_node('particle_filter_node')
     rospy.Subscriber("/tag_detections", AprilTagDetectionArray, callback_april, queue_size=1)
-    rospy.Subscriber("/gantry_in_m", Gantry, callback_gantry, queue_size=1)
+    rospy.Subscriber("/gantry/current_position", gantry, callback_gantry, queue_size=1)
 
     while not rospy.is_shutdown():
         pass
