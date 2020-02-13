@@ -8,18 +8,18 @@ class ExtendedKalmanFilter(object):
         self.__x_est_0 = np.array([[x0[0]], [x0[1]], [x0[2]]]).reshape((3, 1))
         self.__x_est = self.__x_est_0
         # standard deviations
-        self.__sig_x1 = 1.500
-        self.__sig_x2 = 1.500
-        self.__sig_x3 = 1.500
+        self.__sig_x1 = 0.0500
+        self.__sig_x2 = 0.0500
+        self.__sig_x3 = 0.0500
 
         self.__p_mat_0 = np.array(np.diag([self.__sig_x1 ** 2,
                                            self.__sig_x2 ** 2,
                                            self.__sig_x3 ** 2]))
         self.__p_mat = self.__p_mat_0
         # process noise
-        self.__sig_w1 = 0.500
-        self.__sig_w2 = 0.500
-        self.__sig_w3 = 0.300
+        self.__sig_w1 = 0.0500
+        self.__sig_w2 = 0.0500
+        self.__sig_w3 = 0.0300
         self.__q_mat = np.array(np.diag([self.__sig_w1 ** 2,
                                          self.__sig_w2 ** 2,
                                          self.__sig_w3 ** 2]))
@@ -28,7 +28,7 @@ class ExtendedKalmanFilter(object):
         # --> see measurement_covariance_model
         self.__sig_r = 1
         self.__r_mat = self.__sig_r ** 2
-        self.__max_dist_to_tag  = 1.5
+        self.__max_dist_to_tag  = 3
 
         # initial values and system dynamic (=eye)
         self.__i_mat = np.eye(3)
@@ -130,14 +130,20 @@ class ExtendedKalmanFilter(object):
         s_diag = np.diag(s_mat)
         # compute k_mat in an interative way
         for i_tag in range(num_meas):
-            k_mat[:,i_tag] = np.dot(self.__p_mat, h_jac_mat[:,i_tag].transpose()) / s_diag[i_tag]  # 1/s scalar since s_mat is dim = 1x1
+            k_mat[:, i_tag] = np.dot(self.__p_mat, h_jac_mat[i_tag, :].transpose()) / s_diag[i_tag]  # 1/s scalar since s_mat is dim = 1x1
 
         # check distance to tag and reject far away tags
         b_tag_in_range = z_meas <= self.__max_dist_to_tag
-    
-        self.__x_est = self.__x_est + np.dot(k_mat[:, b_tag_in_range], z_tild[b_tag_in_range,0])  # = x_est + k * y_tild
-    
-        self.__p_mat = np.dot((self.__i_mat - np.dot(k_mat[:, b_tag_in_range], h_jac_mat[:, b_tag_in_range])), self.__p_mat)  # = (I-KH)*P
+        #print("bevore estimation")
+        #print(self.__x_est)
+        #print(z_meas)
+        #print(z_est)
+        #self.__x_est = self.__x_est + np.dot(k_mat[:, b_tag_in_range], z_tild[b_tag_in_range,0])  # = x_est + k * y_tild
+        #print(k_mat[:, b_tag_in_range[:, 0]])
+        self.__x_est = self.__x_est + np.matmul(k_mat[:, b_tag_in_range[:, 0]],z_tild[b_tag_in_range]).reshape((3,1))  # = x_est + k * y_tild
+        #print("after estimation")
+        #print(self.__x_est)
+        self.__p_mat = np.matmul((self.__i_mat - np.matmul(k_mat[:, b_tag_in_range[:, 0]], h_jac_mat[b_tag_in_range[:, 0],:])), self.__p_mat)  # = (I-KH)*P
 
         return True
 

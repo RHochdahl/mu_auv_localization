@@ -30,10 +30,10 @@ old_yaw = 0
 # /home/hippoc/catkin_ws/src/localisation/scripts
 # print os.getcwd()
 # path_to_calibration = '../ros_catkin_ws/src/localisation/scripts'  # on hippoc-companion
-path_to_calibration = '../scripts'  # on computer
-# path_to_calibration = '../catkin_ws/src/muAUV-localization/scripts'    # on hippoc
-tags = genfromtxt(path_to_calibration + '/calibration.csv', delimiter=',')
-
+#path_to_calibration = '../scripts'  # on computer
+#path_to_calibration = '~/catkin_ws/src/muAUV-localization_ros/scripts'    # on hippoc
+#tags = genfromtxt(path_to_calibration + '/calibration.csv', delimiter=',')
+tags = genfromtxt('/home/mummel/catkin_ws/src/muAUV-localization_ros/scripts/calibration.csv', delimiter=',') # MUMMEL PC
 tags = tags[:, 0:4]
 print(tags)
 tags[:,3] += 0.0
