@@ -11,7 +11,7 @@ from visualization_msgs.msg import Marker, MarkerArray
 publisher_position_boat_NED = rospy.Publisher("/mavros/local_position/pose_NED", PoseStamped, queue_size=1)
 
 rate = None
-rviz=True
+rviz=False
 if rviz:
     publisher_marker = rospy.Publisher('/pose_boat_NED', Marker, queue_size=1)
 
