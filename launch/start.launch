@@ -30,10 +30,10 @@
     <param name="publish_tag_detections_image" type="bool" value="true" />   <!-- default: false -->
   </node>
             <!-- Localisation -->
-  <node pkg="localisation" type="ekf_node.py" name="ekf_node" clear_params="true" output="screen" launch-prefix="$(arg launch_prefix)" >
+  <node pkg="mu_auv_localization" type="ekf_node.py" name="ekf_node" clear_params="true" output="screen" launch-prefix="$(arg launch_prefix)" >
   </node>
               <!-- ENU_to_NED -->
-  <node pkg="localisation" type="ENU_to_NED.py" name="enu_to_ned_tank_coordinate_system" clear_params="true" output="screen" launch-prefix="$(arg launch_prefix)" >
+  <node pkg="mu_auv_localization" type="ENU_to_NED.py" name="enu_to_ned_tank_coordinate_system" clear_params="true" output="screen" launch-prefix="$(arg launch_prefix)" >
   </node>
 
 </launch>
