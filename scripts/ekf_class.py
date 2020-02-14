@@ -8,18 +8,18 @@ class ExtendedKalmanFilter(object):
         self.__x_est_0 = np.array([[x0[0]], [x0[1]], [x0[2]]]).reshape((3, 1))
         self.__x_est = self.__x_est_0
         # standard deviations
-        self.__sig_x1 = 0.0500
-        self.__sig_x2 = 0.0500
-        self.__sig_x3 = 0.0500
+        self.__sig_x1 = 0.200
+        self.__sig_x2 = 0.200
+        self.__sig_x3 = 0.100
 
         self.__p_mat_0 = np.array(np.diag([self.__sig_x1 ** 2,
                                            self.__sig_x2 ** 2,
                                            self.__sig_x3 ** 2]))
         self.__p_mat = self.__p_mat_0
         # process noise
-        self.__sig_w1 = 0.0500
-        self.__sig_w2 = 0.0500
-        self.__sig_w3 = 0.0300
+        self.__sig_w1 = 0.100
+        self.__sig_w2 = 0.100
+        self.__sig_w3 = 0.100
         self.__q_mat = np.array(np.diag([self.__sig_w1 ** 2,
                                          self.__sig_w2 ** 2,
                                          self.__sig_w3 ** 2]))
