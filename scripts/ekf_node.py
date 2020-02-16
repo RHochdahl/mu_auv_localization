@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import ekf_class
 import numpy as np
-
+import rospkg
 from pyquaternion import Quaternion
 import rospy
 import tf
@@ -30,15 +30,19 @@ old_yaw = 0
 # /home/hippoc/catkin_ws/src/localisation/scripts
 # print os.getcwd()
 # path_to_calibration = '../ros_catkin_ws/src/localisation/scripts'  # on hippoc-companion
-#path_to_calibration = '../scripts'  # on computer
-#path_to_calibration = '~/catkin_ws/src/muAUV-localization_ros/scripts'    # on hippoc
-#tags = genfromtxt(path_to_calibration + '/calibration.csv', delimiter=',')
+# path_to_calibration = '../scripts'  # on computer
+# path_to_calibration = '~/catkin_ws/src/muAUV-localization_ros/scripts'    # on hippoc
+# tags = genfromtxt(path_to_calibration + '/calibration.csv', delimiter=',')
 # tags = genfromtxt('/home/mummel/catkin_ws/src/muAUV-localization_ros/scripts/calibration.csv', delimiter=',') # MUMMEL PC
-#tags = genfromtxt('/home/hippoc/catkin_ws/src/muAUV-localization_ros/scripts/calibration_tank.csv', delimiter=',') # HIPPOC PC
-tags = genfromtxt('/home/pi/catkin_ws/src/muAUV-localization_ros/scripts/calibration_tank.csv', delimiter=',')#pi PC
+# tags = genfromtxt('/home/hippoc/catkin_ws/src/muAUV-localization_ros/scripts/calibration_tank.csv', delimiter=',') # HIPPOC PC
+rospack=rospkg.RosPack()
+data_path = rospack.get_path("mu_auv_localization")+'/scripts/calibration_ground_truth_gazebo.csv' # in gazebo
+#data_path = rospack.get_path("mu_auv_localization")+'/scripts/calibration_tank.csv'# in real tank
+# tags = genfromtxt('/home/pi/catkin_ws/src/muAUV-localization_ros/scripts/calibration_tank.csv', delimiter=',')#pi PC
+tags = genfromtxt(data_path,delimiter=',')  # home PC
 tags = tags[:, 0:4]
 print(tags)
-tags[:,3] += 0.0
+tags[:, 3] += 0.0
 # tags[:, 1] += 0.08  # to shift x-value according to gantry origin
 # tags[:,2] += 0.02  # to shift y-value according to gantry origin
 # print(tags)
@@ -79,8 +83,8 @@ def callback(msg, tmp_list):
 
         for i, tag in enumerate(msg.detections):
             tag_id = int(tag.id[0])
-            tag_distance_cam = np.array(([tag.pose.pose.pose.position.x*1.05,
-                                          tag.pose.pose.pose.position.y*1.1,
+            tag_distance_cam = np.array(([tag.pose.pose.pose.position.x * 1.05,
+                                          tag.pose.pose.pose.position.y * 1.1,
                                           tag.pose.pose.pose.position.z]))
             measurements[i, 0] = np.linalg.norm(tag_distance_cam)
             tmpquat = Quaternion(w=tag.pose.pose.pose.orientation.w,
@@ -118,15 +122,17 @@ def callback(msg, tmp_list):
         # ekf update step
         ekf.update(measurements)
 
-        yaw = np.mean(orientation_yaw_pitch_roll[:, 0])
+        yaw_list=np.asarray(orientation_yaw_pitch_roll[:, 0])
+        print(len(yaw_list))
+        yaw=np.arctan2(np.mean(np.sin(yaw_list)),np.mean(np.cos(yaw_list)))
         pitch = np.mean(orientation_yaw_pitch_roll[:, 1])
         roll = np.mean(orientation_yaw_pitch_roll[:, 2])
     else:
         yaw = old_yaw
     old_yaw = yaw
     # print "reale messungen: " + str(measurements)
-
-    print("Angle yaw: " + str(np.round(yaw * 180 / np.pi,decimals=2)) + ", x_est = " + str(ekf.get_x_est().transpose()))
+    print("Angle yaw: " + str(np.round(yaw * 180 / np.pi, decimals=2)) + ", x_est = " + str(
+        ekf.get_x_est().transpose()))
     estimated_orientation = yaw_pitch_roll_to_quat(-(yaw - np.pi / 2), 0, 0)
     # estimated_orientation = yaw_pitch_roll_to_quat(yaw, 0, 0)#evtl wrong
     # calculate position as mean of particle positions
@@ -206,7 +212,7 @@ def main():
 
     publisher_position = rospy.Publisher('estimated_pose', PoseStamped, queue_size=1)
     publisher_mavros = rospy.Publisher('/mavros/vision_pose/pose', PoseStamped, queue_size=1)
-    #publisher_particles = rospy.Publisher('particle_poses', PoseArray, queue_size=1)
+    # publisher_particles = rospy.Publisher('particle_poses', PoseArray, queue_size=1)
     publisher_marker = rospy.Publisher('Sphere', MarkerArray, queue_size=1)
     broadcaster = tf.TransformBroadcaster()
 
