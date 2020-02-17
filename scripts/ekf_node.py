@@ -26,18 +26,9 @@ old_yaw = 0
 # set_mode_srv = rospy.ServiceProxy('mavros/set_mode', SetMode)
 # res = set_mode_srv(0, " OFFBOARD")
 
-# /home/hippoc/.ros
-# /home/hippoc/catkin_ws/src/localisation/scripts
-# print os.getcwd()
-# path_to_calibration = '../ros_catkin_ws/src/localisation/scripts'  # on hippoc-companion
-# path_to_calibration = '../scripts'  # on computer
-# path_to_calibration = '~/catkin_ws/src/muAUV-localization_ros/scripts'    # on hippoc
-# tags = genfromtxt(path_to_calibration + '/calibration.csv', delimiter=',')
-# tags = genfromtxt('/home/mummel/catkin_ws/src/muAUV-localization_ros/scripts/calibration.csv', delimiter=',') # MUMMEL PC
-# tags = genfromtxt('/home/hippoc/catkin_ws/src/muAUV-localization_ros/scripts/calibration_tank.csv', delimiter=',') # HIPPOC PC
 rospack=rospkg.RosPack()
-data_path = rospack.get_path("mu_auv_localization")+'/scripts/calibration_ground_truth_gazebo.csv' # in gazebo
-#data_path = rospack.get_path("mu_auv_localization")+'/scripts/calibration_tank.csv'# in real tank
+#data_path = rospack.get_path("mu_auv_localization")+'/scripts/calibration_ground_truth_gazebo.csv' # in gazebo
+data_path = rospack.get_path("mu_auv_localization")+'/scripts/calibration_tank.csv'# in real tank
 # tags = genfromtxt('/home/pi/catkin_ws/src/muAUV-localization_ros/scripts/calibration_tank.csv', delimiter=',')#pi PC
 tags = genfromtxt(data_path,delimiter=',')  # home PC
 tags = tags[:, 0:4]
@@ -123,7 +114,6 @@ def callback(msg, tmp_list):
         ekf.update(measurements)
 
         yaw_list=np.asarray(orientation_yaw_pitch_roll[:, 0])
-        print(len(yaw_list))
         yaw=np.arctan2(np.mean(np.sin(yaw_list)),np.mean(np.cos(yaw_list)))
         pitch = np.mean(orientation_yaw_pitch_roll[:, 1])
         roll = np.mean(orientation_yaw_pitch_roll[:, 2])
@@ -220,8 +210,7 @@ def main():
                      [ekf, publisher_position, publisher_mavros, broadcaster,
                       publisher_marker], queue_size=1)
 
-    while not rospy.is_shutdown():
-        pass
+    rospy.spin()
 
 
 if __name__ == '__main__':
