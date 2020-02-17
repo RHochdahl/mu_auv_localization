@@ -26,11 +26,11 @@ old_yaw = 0
 # set_mode_srv = rospy.ServiceProxy('mavros/set_mode', SetMode)
 # res = set_mode_srv(0, " OFFBOARD")
 
-rospack=rospkg.RosPack()
-#data_path = rospack.get_path("mu_auv_localization")+'/scripts/calibration_ground_truth_gazebo.csv' # in gazebo
-data_path = rospack.get_path("mu_auv_localization")+'/scripts/calibration_tank.csv'# in real tank
+rospack = rospkg.RosPack()
+# data_path = rospack.get_path("mu_auv_localization")+'/scripts/calibration_ground_truth_gazebo.csv' # in gazebo
+data_path = rospack.get_path("mu_auv_localization") + '/scripts/calibration_tank.csv'  # in real tank
 # tags = genfromtxt('/home/pi/catkin_ws/src/muAUV-localization_ros/scripts/calibration_tank.csv', delimiter=',')#pi PC
-tags = genfromtxt(data_path,delimiter=',')  # home PC
+tags = genfromtxt(data_path, delimiter=',')  # home PC
 tags = tags[:, 0:4]
 print(tags)
 tags[:, 3] += 0.0
@@ -113,8 +113,8 @@ def callback(msg, tmp_list):
         # ekf update step
         ekf.update(measurements)
 
-        yaw_list=np.asarray(orientation_yaw_pitch_roll[:, 0])
-        yaw=np.arctan2(np.mean(np.sin(yaw_list)),np.mean(np.cos(yaw_list)))
+        yaw_list = np.asarray(orientation_yaw_pitch_roll[:, 0])
+        yaw = np.arctan2(np.mean(np.sin(yaw_list)), np.mean(np.cos(yaw_list)))
         pitch = np.mean(orientation_yaw_pitch_roll[:, 1])
         roll = np.mean(orientation_yaw_pitch_roll[:, 2])
     else:
