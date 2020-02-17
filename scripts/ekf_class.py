@@ -144,13 +144,12 @@ class ExtendedKalmanFilter(object):
         #print("after estimation")
         #print(self.__x_est)
         self.__p_mat = np.matmul((self.__i_mat - np.matmul(k_mat[:, b_tag_in_range[:, 0]], h_jac_mat[b_tag_in_range[:, 0],:])), self.__p_mat)  # = (I-KH)*P
-        if self.__x_est[0]>5 or np.isnan(self.__x_est[0]) or self.__x_est[0]<-0.5  :
+        if self.__x_est[0]>5 or np.isnan(self.__x_est[0]) or self.__x_est[0]<-1  :
             self.__x_est[0]=1.5
-
-        if self.__x_est[1]>3 or np.isnan(self.__x_est[1]) or self.__x_est[1]<-0.5  :
+        if self.__x_est[1]>3 or np.isnan(self.__x_est[1]) or self.__x_est[1]<-1  :
             self.__x_est[1]=1
 
-        if self.__x_est[2]>3 or np.isnan(self.__x_est[2]) or self.__x_est[2]<-0.5  :
+        if self.__x_est[2]>3 or np.isnan(self.__x_est[2]) or self.__x_est[2]<-1  :
             self.__x_est[2]=0.5
         return True
 
