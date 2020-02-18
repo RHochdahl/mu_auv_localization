@@ -13,7 +13,7 @@
     <param name="video_device" value="/dev/video0" />
     <param name="image_width" value="800" />
     <param name="image_height" value="800" />
-    <param name="framerate" value="7" />
+    <param name="framerate" value="10" />
     <param name="pixel_format" value="yuyv" />
     <param name="camera_frame_id" value="localization_cam" />
     <param name="io_method" value="mmap"/>
