@@ -8,19 +8,19 @@
   <!-- Set parameters -->
   <rosparam command="load" file="$(find apriltag_ros)/config/settings.yaml" ns="$(arg node_namespace)" />
   <rosparam command="load" file="$(find apriltag_ros)/config/tags.yaml" ns="$(arg node_namespace)" />
-          <!-- camera node
+          <!-- camera node  -->
   <node name="localization_cam" pkg="usb_cam" type="usb_cam_node" output="screen" >
     <param name="video_device" value="/dev/video0" />
-    <param name="image_width" value="640" />
-    <param name="image_height" value="480" />
+    <param name="image_width" value="800" />
+    <param name="image_height" value="800" />
     <param name="framerate" value="7" />
     <param name="pixel_format" value="yuyv" />
     <param name="camera_frame_id" value="localization_cam" />
     <param name="io_method" value="mmap"/>
   </node>
-  -->
-  <!-- camera node raspbian cam-->
-   <include file="$(find raspicam_node)/launch/localization_camera_start.launch"> </include>
+
+  <!-- camera node raspbian cam
+   <include file="$(find raspicam_node)/launch/localization_camera_start.launch"> </include>-->
            <!-- Image rectification: TODO Add own calibration node here -->
   <node name="image_proc" pkg="image_proc" type="image_proc" ns="$(arg camera_name)">
   </node>
