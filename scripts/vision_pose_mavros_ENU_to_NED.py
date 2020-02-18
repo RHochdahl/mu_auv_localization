@@ -8,7 +8,7 @@ from geometry_msgs.msg import Pose, PoseArray, PoseStamped
 from visualization_msgs.msg import Marker, MarkerArray
 
 
-publisher_position_boat_NED = rospy.Publisher("/mavros/local_position/pose_NED", PoseStamped, queue_size=1)
+publisher_position_boat_NED = rospy.Publisher("/mavros/vision_pose/pose_NED", PoseStamped, queue_size=1)
 
 rate = None
 rviz=False
@@ -76,7 +76,7 @@ def main():
     global rate
     rate = rospy.Rate(30)
 
-    rospy.Subscriber("/mavros/local_position/pose", PoseStamped, callback, queue_size=1)
+    rospy.Subscriber("/mavros/vision_pose/pose", PoseStamped, callback, queue_size=1)
     rospy.spin()
 
 

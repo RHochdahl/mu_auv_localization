@@ -28,7 +28,7 @@ class ExtendedKalmanFilter(object):
         # --> see measurement_covariance_model
         self.__sig_r = 1
         self.__r_mat = self.__sig_r ** 2
-        self.__max_dist_to_tag  = 3
+        self.__max_dist_to_tag = 3
 
         # initial values and system dynamic (=eye)
         self.__i_mat = np.eye(3)
@@ -74,7 +74,7 @@ class ExtendedKalmanFilter(object):
             r_dist = np.sqrt((x[0] - tag_pos[0]) ** 2 +
                              (x[1] - tag_pos[1]) ** 2 +
                              (x[2] - tag_pos[2]) ** 2)
-            #print ("r = " + str(r_dist))
+            # print ("r = " + str(r_dist))
             z[i, 0] = r_dist
 
         return z
@@ -118,38 +118,43 @@ class ExtendedKalmanFilter(object):
         # estimate measurement from x_est
         z_est = self.h(self.__x_est, z_meas_tags)
         z_tild = z_meas - z_est
-        
+
         # calc K-gain
         h_jac_mat = self.h_jacobian(self.__x_est, z_meas_tags)
 
-
-        k_mat = np.zeros((3,num_meas))
+        k_mat = np.zeros((3, num_meas))
         r_mat_temp = np.eye(num_meas) * self.__r_mat  # same measurement noise for all measurements, for the moment
 
         s_mat = np.dot(h_jac_mat, np.dot(self.__p_mat, h_jac_mat.transpose())) + r_mat_temp
         s_diag = np.diag(s_mat)
         # compute k_mat in an interative way
         for i_tag in range(num_meas):
-            k_mat[:, i_tag] = np.dot(self.__p_mat, h_jac_mat[i_tag, :].transpose()) / s_diag[i_tag]  # 1/s scalar since s_mat is dim = 1x1
+            k_mat[:, i_tag] = np.dot(self.__p_mat, h_jac_mat[i_tag, :].transpose()) / s_diag[
+                i_tag]  # 1/s scalar since s_mat is dim = 1x1
 
         # check distance to tag and reject far away tags
         b_tag_in_range = z_meas <= self.__max_dist_to_tag
-        #print("bevore estimation")
-        #print(self.__x_est)
-        #print(z_meas)
-        #print(z_est)
-        #self.__x_est = self.__x_est + np.dot(k_mat[:, b_tag_in_range], z_tild[b_tag_in_range,0])  # = x_est + k * y_tild
-        #print(k_mat[:, b_tag_in_range[:, 0]])
-        self.__x_est = self.__x_est + np.matmul(k_mat[:, b_tag_in_range[:, 0]],z_tild[b_tag_in_range]).reshape((3,1))  # = x_est + k * y_tild
-        #print("after estimation")
-        #print(self.__x_est)
-        self.__p_mat = np.matmul((self.__i_mat - np.matmul(k_mat[:, b_tag_in_range[:, 0]], h_jac_mat[b_tag_in_range[:, 0],:])), self.__p_mat)  # = (I-KH)*P
-        if self.__x_est[0]>5 or np.isnan(self.__x_est[0]) or self.__x_est[0]<-1  :
-            self.__x_est[0]=1.5
-        if self.__x_est[1]>3 or np.isnan(self.__x_est[1]) or self.__x_est[1]<-1  :
-            self.__x_est[1]=1
+        # print("bevore estimation")
+        # print(self.__x_est)
+        # print(z_meas)
+        # print(z_est)
+        # self.__x_est = self.__x_est + np.dot(k_mat[:, b_tag_in_range], z_tild[b_tag_in_range,0])  # = x_est + k * y_tild
+        # print(k_mat[:, b_tag_in_range[:, 0]])
+        self.__x_est = self.__x_est + np.matmul(k_mat[:, b_tag_in_range[:, 0]], z_tild[b_tag_in_range]).reshape(
+            (3, 1))  # = x_est + k * y_tild
+        # print("after estimation")
+        # print(self.__x_est)
+        self.__p_mat = np.matmul(
+            (self.__i_mat - np.matmul(k_mat[:, b_tag_in_range[:, 0]], h_jac_mat[b_tag_in_range[:, 0], :])),
+            self.__p_mat)  # = (I-KH)*P
+        if self.__x_est[0] > 5 or np.isnan(self.__x_est[0]) or self.__x_est[0] < -1:
+            self.__x_est[0] = 1.5
+            self.__p_mat[0] = self.__p_mat_0[0]
+        if self.__x_est[1] > 3 or np.isnan(self.__x_est[1]) or self.__x_est[1] < -1:
+            self.__x_est[1] = 1
+            self.__p_mat[1] = self.__p_mat_0[1]
 
-        if self.__x_est[2]>3 or np.isnan(self.__x_est[2]) or self.__x_est[2]<-1  :
-            self.__x_est[2]=0.5
+        if self.__x_est[2] > 2 or np.isnan(self.__x_est[2]) or self.__x_est[2] < -1:
+            self.__x_est[2] = 0.5
+            self.__p_mat[2] = self.__p_mat_0[2]
         return True
-
