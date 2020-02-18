@@ -19,10 +19,10 @@
     <param name="io_method" value="mmap"/>
   </node>
     -->
-    <!-- camera node
-    <include file="$(find usb_cam)/launch/usb_cam-test.launch"> </include>-->
-  <!-- camera node raspbian cam-->
-   <include file="$(find raspicam_node)/launch/localization_camera_start.launch"> </include>
+    <!-- camera node -->
+    <include file="$(find usb_cam)/launch/usb_cam-test.launch"> </include>
+  <!-- camera node raspbian cam
+   <include file="$(find raspicam_node)/launch/localization_camera_start.launch"> </include>-->
            <!-- Image rectification: TODO Add own calibration node here -->
   <node name="image_proc" pkg="image_proc" type="image_proc" ns="$(arg camera_name)">
   </node>
