@@ -21,7 +21,7 @@
   <!-- camera node raspbian cam -->
    <include file="$(find raspicam_node)/launch/localization_camera_start.launch"> </include>
            <!-- Image rectification: TODO Add own calibration node here -->
-  <node name="image_proc" pkg="image_proc" type="image_proc" ns="usb_cam">
+  <node name="image_proc" pkg="image_proc" type="image_proc" ns="$(arg camera_name)">
   </node>
            <!-- Apriltag algorithm -->
   <node pkg="apriltag_ros" type="apriltag_ros_continuous_node" name="$(arg node_namespace)"  clear_params="true" output="screen" launch-prefix="$(arg launch_prefix)" >
