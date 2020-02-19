@@ -159,7 +159,7 @@ def callback(msg, tmp_list):
     position.pose.orientation.x = estimated_orientation.x
     position.pose.orientation.y = estimated_orientation.y
     position.pose.orientation.z = estimated_orientation.z
-    #publisher_position.publish(position)
+    publisher_position.publish(position)
 
     # yaw = 0 / 180.0 * np.pi
     # tmp = yaw_pitch_roll_to_quat(-(yaw-np.pi/2), 0, 0)
