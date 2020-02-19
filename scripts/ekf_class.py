@@ -27,9 +27,9 @@ class ExtendedKalmanFilter(object):
         self.__sig_w1 = 0.100
         self.__sig_w2 = 0.100
         self.__sig_w3 = 0.100
-        self.__sig_w4 = 0.300
-        self.__sig_w5 = 0.300
-        self.__sig_w6 = 0.300
+        self.__sig_w4 = 0.100
+        self.__sig_w5 = 0.100
+        self.__sig_w6 = 0.100
         self.__q_mat = np.array(np.diag([self.__sig_w1 ** 2,
                                          self.__sig_w2 ** 2,
                                          self.__sig_w3 ** 2,
@@ -39,12 +39,12 @@ class ExtendedKalmanFilter(object):
 
         # measurement noise
         # --> see measurement_covariance_model
-        self.__sig_r = 2
+        self.__sig_r = 1
         self.__r_mat = self.__sig_r ** 2
         # measurement noise velocity
-        self.__sig_v_x = 0.01
-        self.__sig_v_y = 0.01
-        self.__sig_v_z = 0.01
+        self.__sig_v_x = 1
+        self.__sig_v_y = 1
+        self.__sig_v_z = 1
         self.__v_mat = np.array(np.diag([self.__sig_v_x ** 2,
                                          self.__sig_v_y ** 2,
                                          self.__sig_v_z ** 2]))
