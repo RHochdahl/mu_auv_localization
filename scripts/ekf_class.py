@@ -2,36 +2,54 @@ import numpy as np
 
 
 class ExtendedKalmanFilter(object):
-    def __init__(self, x0=[1.0, 1.0, 0.5]):
+    def __init__(self, x0=[1.0, 1.0, 0.5, 0, 0, 0]):  # states: x y z dx dy dz
 
         """ initialize EKF """
-        self.__x_est_0 = np.array([[x0[0]], [x0[1]], [x0[2]]]).reshape((3, 1))
+        self.__x_est_0 = np.array([[x0[0]], [x0[1]], [x0[2]], [x0[3]], [x0[4]], [x0[5]]]).reshape((6, 1))
         self.__x_est = self.__x_est_0
+        self.__x_est_last_step = self.__x_est
         # standard deviations
         self.__sig_x1 = 0.200
         self.__sig_x2 = 0.200
         self.__sig_x3 = 0.100
+        self.__sig_x4 = 0.100
+        self.__sig_x5 = 0.100
+        self.__sig_x6 = 0.050
 
         self.__p_mat_0 = np.array(np.diag([self.__sig_x1 ** 2,
                                            self.__sig_x2 ** 2,
-                                           self.__sig_x3 ** 2]))
+                                           self.__sig_x3 ** 2,
+                                           self.__sig_x4 ** 2,
+                                           self.__sig_x5 ** 2,
+                                           self.__sig_x6 ** 2]))
         self.__p_mat = self.__p_mat_0
         # process noise
         self.__sig_w1 = 0.100
         self.__sig_w2 = 0.100
         self.__sig_w3 = 0.100
+        self.__sig_w4 = 0.000
+        self.__sig_w5 = 0.000
+        self.__sig_w6 = 0.000
         self.__q_mat = np.array(np.diag([self.__sig_w1 ** 2,
                                          self.__sig_w2 ** 2,
-                                         self.__sig_w3 ** 2]))
+                                         self.__sig_w3 ** 2,
+                                         self.__sig_w4 ** 2,
+                                         self.__sig_w5 ** 2,
+                                         self.__sig_w6 ** 2]))
 
         # measurement noise
         # --> see measurement_covariance_model
-        self.__sig_r = 1
+        self.__sig_r = 3
         self.__r_mat = self.__sig_r ** 2
-        self.__max_dist_to_tag = 3
-
+        self.__max_dist_to_tag = 2
+        self.frequency = 10
         # initial values and system dynamic (=eye)
-        self.__i_mat = np.eye(3)
+        self.__i_mat = np.asarray([[1, 0, 0, 1 / self.frequency, 0, 0],
+                                   [0, 1, 0, 0, 1 / self.frequency, 0],
+                                   [0, 0, 1, 0, 0, 1 / self.frequency],
+                                   [0, 0, 0, 0, 0, 0],
+                                   [0, 0, 0, 0, 0, 0],
+                                   [0, 0, 0, 0, 0, 0]])
 
         # self.__z_meas = np.zeros(self.__max_tag)
         # self.__y_est = np.zeros(self.__max_tag)
@@ -105,8 +123,11 @@ class ExtendedKalmanFilter(object):
 
     def prediction(self):
         """ prediction """
-        self.__x_est = self.__x_est  # + np.random.randn(3, 1) * 1  # = I * x_est
-        self.__p_mat = self.__i_mat.dot(self.__p_mat.dot(self.__i_mat)) + self.__q_mat
+        self.__x_est = np.matmul(self.__i_mat, self.__x_est)#prediction = I * x_est
+        self.__x_est[3:6] = (self.__x_est[0:3] - self.__x_est_last_step[0:3]) / (
+                1.0 / self.frequency)  # velocity calculation=
+        #print("print current state and last state",self.__x_est[0:3], self.__x_est_last_step[0:3])
+        self.__p_mat = np.matmul(self.__i_mat,np.matmul(self.__p_mat,np.transpose(self.__i_mat))) + self.__q_mat
         return True
 
     def update(self, z_meas_tags):
@@ -116,20 +137,20 @@ class ExtendedKalmanFilter(object):
         z_meas = z_meas_tags[:, 0].reshape(num_meas, 1)
 
         # estimate measurement from x_est
-        z_est = self.h(self.__x_est, z_meas_tags)
+        z_est = self.h(self.__x_est[0:3], z_meas_tags)
         z_tild = z_meas - z_est
 
         # calc K-gain
-        h_jac_mat = self.h_jacobian(self.__x_est, z_meas_tags)
+        h_jac_mat = self.h_jacobian(self.__x_est[0:3], z_meas_tags)
 
         k_mat = np.zeros((3, num_meas))
         r_mat_temp = np.eye(num_meas) * self.__r_mat  # same measurement noise for all measurements, for the moment
 
-        s_mat = np.dot(h_jac_mat, np.dot(self.__p_mat, h_jac_mat.transpose())) + r_mat_temp
+        s_mat = np.dot(h_jac_mat, np.dot(self.__p_mat[0:3,0:3], h_jac_mat.transpose())) + r_mat_temp
         s_diag = np.diag(s_mat)
         # compute k_mat in an interative way
         for i_tag in range(num_meas):
-            k_mat[:, i_tag] = np.dot(self.__p_mat, h_jac_mat[i_tag, :].transpose()) / s_diag[
+            k_mat[:, i_tag] = np.dot(self.__p_mat[0:3,0:3], h_jac_mat[i_tag, :].transpose()) / s_diag[
                 i_tag]  # 1/s scalar since s_mat is dim = 1x1
 
         # check distance to tag and reject far away tags
@@ -140,13 +161,16 @@ class ExtendedKalmanFilter(object):
         # print(z_est)
         # self.__x_est = self.__x_est + np.dot(k_mat[:, b_tag_in_range], z_tild[b_tag_in_range,0])  # = x_est + k * y_tild
         # print(k_mat[:, b_tag_in_range[:, 0]])
-        self.__x_est = self.__x_est + np.matmul(k_mat[:, b_tag_in_range[:, 0]], z_tild[b_tag_in_range]).reshape(
+
+        self.__x_est_last_step = np.copy(self.__x_est)
+        self.__x_est[0:3] = self.__x_est[0:3] + np.matmul(k_mat[:, b_tag_in_range[:, 0]],
+                                                          z_tild[b_tag_in_range]).reshape(
             (3, 1))  # = x_est + k * y_tild
         # print("after estimation")
         # print(self.__x_est)
-        self.__p_mat = np.matmul(
-            (self.__i_mat - np.matmul(k_mat[:, b_tag_in_range[:, 0]], h_jac_mat[b_tag_in_range[:, 0], :])),
-            self.__p_mat)  # = (I-KH)*P
+        self.__p_mat[0:3,0:3] = np.matmul(
+            (np.eye(3) - np.matmul(k_mat[:, b_tag_in_range[:, 0]], h_jac_mat[b_tag_in_range[:, 0], :])),
+            self.__p_mat[0:3,0:3])  # = (I-KH)*P
         if self.__x_est[0] > 5 or np.isnan(self.__x_est[0]) or self.__x_est[0] < -1:
             self.__x_est[0] = 1.5
             self.__p_mat[0] = self.__p_mat_0[0]
