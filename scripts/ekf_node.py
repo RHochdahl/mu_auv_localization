@@ -10,6 +10,7 @@ from geometry_msgs.msg import Pose, PoseArray, PoseStamped
 from apriltag_ros.msg import AprilTagDetectionArray
 from apriltag_ros.msg import AprilTagDetection
 from visualization_msgs.msg import Marker, MarkerArray
+from sensor_msgs.msg import Imu
 from mavros_msgs.srv import SetMode
 from numpy import genfromtxt
 import os
@@ -21,14 +22,17 @@ state_dim = 3  # x, y, z
 # z_range = (0, 1.5)
 # cov_mat = 1.5
 # cov_mat = 0.05
+roll_current = 0
+pitch_current = 0
+yaw_current = 0
 cov_mat = 0.05
 old_yaw = 0
 # set_mode_srv = rospy.ServiceProxy('mavros/set_mode', SetMode)
 # res = set_mode_srv(0, " OFFBOARD")
 
 rospack = rospkg.RosPack()
-data_path = rospack.get_path("mu_auv_localization")+'/scripts/calibration_ground_truth_gazebo.csv' # in gazebo
-# data_path = rospack.get_path("mu_auv_localization") + '/scripts/calibration_tank.csv'  # in real tank
+# data_path = rospack.get_path("mu_auv_localization")+'/scripts/calibration_ground_truth_gazebo.csv' # in gazebo
+data_path = rospack.get_path("mu_auv_localization") + '/scripts/calibration_tank.csv'  # in real tank
 # tags = genfromtxt('/home/pi/catkin_ws/src/muAUV-localization_ros/scripts/calibration_tank.csv', delimiter=',')#pi PC
 tags = genfromtxt(data_path, delimiter=',')  # home PC
 
@@ -52,6 +56,31 @@ def yaw_pitch_roll_to_quat(yaw, pitch, roll):
                        w=cy * cp * cr + sy * sp * sr))
 
 
+def callback_imu(msg, ekf):
+    global roll_current, pitch_current, yaw_current
+    tmp = yaw_pitch_roll_to_quat(yaw_current, pitch_current, roll_current).rotate(
+        np.asarray([[-msg.linear_acceleration.x], [msg.linear_acceleration.y], [msg.linear_acceleration.z]]))
+    #print("enu",np.asarray([[msg.linear_acceleration.x], [msg.linear_acceleration.y], [msg.linear_acceleration.z]]))
+    #print("global_NED",tmp)
+    ekf.prediction(tmp[0], tmp[1], tmp[2] - 9.81)
+
+
+def callback_orientation(msg):
+    global yaw_current, pitch_current, roll_current
+    rotation_body_frame = Quaternion(w=msg.pose.orientation.w,
+                                     x=msg.pose.orientation.x,
+                                     y=msg.pose.orientation.y,
+                                     z=msg.pose.orientation.z)
+    yaw, pitch, roll = rotation_body_frame.inverse.yaw_pitch_roll
+    yaw_current = -yaw
+    pitch_current = -pitch
+    roll_current = -((roll + 360 / 180.0 * np.pi) % (np.pi * 2) - 180 / 180.0 * np.pi)
+
+    # yaw_current = yaw
+    # pitch_current = pitch
+    # roll_current = roll
+
+
 def callback(msg, tmp_list):
     """"""
     global old_yaw
@@ -59,7 +88,7 @@ def callback(msg, tmp_list):
      publisher_marker] = tmp_list
 
     # ekf algorithm
-    ekf.prediction()
+    # ekf.prediction()
 
     # get length of message
     num_meas = len(msg.detections)
@@ -169,7 +198,8 @@ def callback(msg, tmp_list):
     # mavros_position.pose.orientation.x = tmp.x
     # mavros_position.pose.orientation.y = tmp.y
     # mavros_position.pose.orientation.z = tmp.z
-    publisher_mavros.publish(mavros_position)
+
+    publisher_mavros.publish(mavros_position)#oublish to boat
 
     # For Debugging
     # mavros_position = PoseStamped()
@@ -210,6 +240,9 @@ def main():
     rospy.Subscriber("/tag_detections", AprilTagDetectionArray, callback,
                      [ekf, publisher_position, publisher_mavros, broadcaster,
                       publisher_marker], queue_size=1)
+    rospy.Subscriber("/mavros/imu/data", Imu, callback_imu,
+                     ekf, queue_size=1)
+    rospy.Subscriber("/mavros/local_position/pose_NED", PoseStamped, callback_orientation, queue_size=1)
 
     rospy.spin()
 
