@@ -15,7 +15,8 @@ class ExtendedKalmanFilter(object):
         self.__sig_x4 = 0.100
         self.__sig_x5 = 0.100
         self.__sig_x6 = 0.100
-
+        self.__under_n_tags_seen = 0
+        self.p = 2.0/10.0
         self.__p_mat_0 = np.array(np.diag([self.__sig_x1 ** 2,
                                            self.__sig_x2 ** 2,
                                            self.__sig_x3 ** 2,
@@ -24,9 +25,9 @@ class ExtendedKalmanFilter(object):
                                            self.__sig_x6 ** 2]))
         self.__p_mat = self.__p_mat_0
         # process noise
-        self.__sig_w1 = 0.1
-        self.__sig_w2 = 0.1
-        self.__sig_w3 = 0.1
+        self.__sig_w1 = 0.02
+        self.__sig_w2 = 0.02
+        self.__sig_w3 = 0.02
         self.__sig_w4 = 0.01
         self.__sig_w5 = 0.01
         self.__sig_w6 = 0.01
@@ -39,12 +40,12 @@ class ExtendedKalmanFilter(object):
 
         # measurement noise
         # --> see measurement_covariance_model
-        self.__sig_r = 2
+        self.__sig_r = 1
         self.__r_mat = self.__sig_r ** 2
         # measurement noise velocity
-        self.__sig_v_x = 1
-        self.__sig_v_y = 1
-        self.__sig_v_z = 1
+        self.__sig_v_x = 0.5
+        self.__sig_v_y = 0.5
+        self.__sig_v_z = 0.5
         self.__v_mat = np.array(np.diag([self.__sig_v_x ** 2,
                                          self.__sig_v_y ** 2,
                                          self.__sig_v_z ** 2]))
@@ -53,7 +54,7 @@ class ExtendedKalmanFilter(object):
         self.frequency_prediction = 50
         self.frequency_update = 10
         # initial values and system dynamic (=eye)
-        self.__i_mat = np.asarray([[1, 0, 0, 1.0 / self.frequency_prediction, 0, 0],
+        self.__f_mat = np.asarray([[1, 0, 0, 1.0 / self.frequency_prediction, 0, 0],
                                    [0, 1, 0, 0, 1.0 / self.frequency_prediction, 0],
                                    [0, 0, 1, 0, 0, 1.0 / self.frequency_prediction],
                                    [0, 0, 0, 1, 0, 0],
@@ -129,9 +130,10 @@ class ExtendedKalmanFilter(object):
     def prediction(self, accel_x, accel_y, accel_z):
         """ prediction """
         # accel_x=0
-        self.__x_est = np.matmul(self.__i_mat, self.__x_est) + np.asarray(
-            [[0], [0], [0], [accel_x/self.frequency_prediction], [accel_y/self.frequency_prediction], [accel_z/self.frequency_prediction]])  # prediction = I * x_est + u
-        self.__p_mat = np.matmul(self.__i_mat, np.matmul(self.__p_mat, np.transpose(self.__i_mat))) + self.__q_mat
+        self.__x_est = np.matmul(self.__f_mat, self.__x_est) + np.asarray(
+            [[0], [0], [0], [accel_x / self.frequency_prediction], [accel_y / self.frequency_prediction],
+             [accel_z / self.frequency_prediction]])  # prediction = f * x_est + u
+        self.__p_mat = np.matmul(self.__f_mat, np.matmul(self.__p_mat, np.transpose(self.__f_mat))) + self.__q_mat
         # print(self.__p_mat)
         return True
 
@@ -139,6 +141,15 @@ class ExtendedKalmanFilter(object):
         """ innovation """
         num_meas = z_meas_tags.shape[0]
         # get new measurement
+        if num_meas < 3:
+            self.__under_n_tags_seen = self.__under_n_tags_seen + (3-num_meas)*self.p
+            if self.__under_n_tags_seen > 10*self.p:
+                self.__under_n_tags_seen = 10*self.p
+        else:
+            self.__under_n_tags_seen = self.__under_n_tags_seen - num_meas*self.p
+            if self.__under_n_tags_seen < 1:
+                self.__under_n_tags_seen = 1
+        print(self.__under_n_tags_seen)
         z_meas = z_meas_tags[:, 0].reshape(num_meas, 1)
 
         # estimate measurement from x_est
@@ -174,7 +185,9 @@ class ExtendedKalmanFilter(object):
         #    self.__p_mat[0:3, 0:3])  # = (I-KH)*P
         # velocity calculation:
         # innovation y=z-h(x)
-        y_vel = (self.__x_est[0:3] - self.__x_est_last_step[0:3]) / (1.0 / self.frequency_update) - self.__x_est[3:6]
+        y_vel = (self.__x_est[0:3] - self.__x_est_last_step[0:3]) / (
+                    1.0 / self.frequency_update) / self.__under_n_tags_seen - self.__x_est[3:6]
+
         s_k_mat = self.__p_mat[3:6, 3:6] + self.__v_mat
         kalman_gain_v = np.matmul(self.__p_mat[3:6, 3:6], np.linalg.inv(s_k_mat))
         p_update = np.zeros((6, 6))

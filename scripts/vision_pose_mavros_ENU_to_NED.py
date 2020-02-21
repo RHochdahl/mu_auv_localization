@@ -4,16 +4,15 @@ import numpy as np
 from pyquaternion import Quaternion
 import rospy
 
-
 from geometry_msgs.msg import Pose, PoseArray, PoseStamped
 from visualization_msgs.msg import Marker, MarkerArray
-
-
+from apriltag_ros.msg import AprilTagDetectionArray
 
 publisher_position_boat_NED = rospy.Publisher("/mavros/vision_pose/pose_NED", PoseStamped, queue_size=1)
+publisher_number_of_tags = rospy.Publisher("/tag_detections_number", PoseStamped, queue_size=1)
 
 rate = None
-rviz=False
+rviz = False
 if rviz:
     publisher_marker = rospy.Publisher('/pose_boat_NED', Marker, queue_size=1)
 
@@ -50,7 +49,6 @@ def callback(msg):
     NED.pose.orientation.z = tmpquat.z
     publisher_position_boat_NED.publish(NED)
 
-
     if rviz:
         marker = Marker()
         marker.header.frame_id = "global_tank"
@@ -73,12 +71,20 @@ def callback(msg):
         publisher_marker.publish(marker)
 
 
+def callback_april_number(msg):
+    # msg = AprilTagDetectionArray()
+    publish_msg = PoseStamped()
+    publish_msg.header = msg.header
+    publish_msg.pose.position.x = len(msg.detections)
+    publisher_number_of_tags.publish(publish_msg)
+
 def main():
     rospy.init_node('enu_to_ned')
     global rate
     rate = rospy.Rate(30)
 
     rospy.Subscriber("/mavros/vision_pose/pose", PoseStamped, callback, queue_size=1)
+    rospy.Subscriber("/tag_detections", AprilTagDetectionArray, callback_april_number)
     rospy.spin()
 
 
