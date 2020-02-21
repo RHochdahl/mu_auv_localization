@@ -6,7 +6,7 @@ from pyquaternion import Quaternion
 import rospy
 import tf
 
-from geometry_msgs.msg import Pose, PoseArray, PoseStamped,TwistStamped
+from geometry_msgs.msg import Pose, PoseArray, PoseStamped, TwistStamped
 from apriltag_ros.msg import AprilTagDetectionArray
 from apriltag_ros.msg import AprilTagDetection
 from visualization_msgs.msg import Marker, MarkerArray
@@ -22,17 +22,14 @@ state_dim = 3  # x, y, z
 # z_range = (0, 1.5)
 # cov_mat = 1.5
 # cov_mat = 0.05
-roll_current = 0
-pitch_current = 0
-yaw_current = 0
 cov_mat = 0.05
 old_yaw = 0
 # set_mode_srv = rospy.ServiceProxy('mavros/set_mode', SetMode)
 # res = set_mode_srv(0, " OFFBOARD")
 
 rospack = rospkg.RosPack()
-#data_path = rospack.get_path("mu_auv_localization")+'/scripts/calibration_ground_truth_gazebo.csv' # in gazebo
-data_path = rospack.get_path("mu_auv_localization") + '/scripts/calibration_tank.csv'  # in real tank
+data_path = rospack.get_path("mu_auv_localization") + '/scripts/calibration_ground_truth_gazebo.csv'  # in gazebo
+# data_path = rospack.get_path("mu_auv_localization") + '/scripts/calibration_tank.csv'  # in real tank
 tags = genfromtxt(data_path, delimiter=',')  # home PC
 
 tags = tags[:, 0:4]
@@ -44,28 +41,18 @@ tags[:, 3] += 0.0
 rviz = False
 
 
-def yaw_pitch_roll_to_quat(yaw, pitch, roll):
-    cy = np.cos(yaw * 0.5)
-    sy = np.sin(yaw * 0.5)
-    cp = np.cos(pitch * 0.5)
-    sp = np.sin(pitch * 0.5)
-    cr = np.cos(roll * 0.5)
-    sr = np.sin(roll * 0.5)
-    return (Quaternion(x=cy * cp * sr - sy * sp * cr, y=sy * cp * sr + cy * sp * cr, z=sy * cp * cr - cy * sp * sr,
-                       w=cy * cp * cr + sy * sp * sr))
-
-
 def callback_imu(msg, tmp_list):
-    global roll_current, pitch_current, yaw_current,old_yaw
+    global old_yaw
     [ekf, publisher_position, publisher_mavros, broadcaster,
-     publisher_marker,publisher_twist] = tmp_list
+     publisher_marker, publisher_twist] = tmp_list
+    # print(np.sqrt((msg.linear_acceleration.x/50)**2+(msg.linear_acceleration.y/50)**2+(msg.linear_acceleration.z/50)**2))
+    # ekf.prediction(tmp[0], tmp[1], tmp[2] - 9.81)
+    x_rot_vel = msg.angular_velocity.x
+    y_rot_vel = msg.angular_velocity.y
+    z_rot_vel = msg.angular_velocity.z
+    ekf.prediction(x_rot_vel, y_rot_vel, z_rot_vel)
 
-    tmp = yaw_pitch_roll_to_quat(yaw_current, pitch_current, roll_current).rotate(
-        np.asarray([[-msg.linear_acceleration.x], [msg.linear_acceleration.y], [msg.linear_acceleration.z]]))
-    #ekf.prediction(tmp[0], tmp[1], tmp[2] - 9.81)
-    ekf.prediction(0, 0, 0)
-
-    estimated_orientation = yaw_pitch_roll_to_quat(-(old_yaw - np.pi / 2), 0, 0)
+    estimated_orientation = ekf.yaw_pitch_roll_to_quat(-(old_yaw - np.pi / 2), 0, 0)
     estimated_position = ekf.get_x_est()
 
     # [mm]
@@ -86,7 +73,7 @@ def callback_imu(msg, tmp_list):
     mavros_position.pose.orientation.x = estimated_orientation.x
     mavros_position.pose.orientation.y = estimated_orientation.y
     mavros_position.pose.orientation.z = estimated_orientation.z
-    publisher_mavros.publish(mavros_position)  # oublish to boat
+    #publisher_mavros.publish(mavros_position)  # oublish to boat
 
     # publish estimated_pose [m]
     position = PoseStamped()
@@ -95,25 +82,25 @@ def callback_imu(msg, tmp_list):
     position.pose.position.x = x_mean_ned / 1000
     position.pose.position.y = y_mean_ned / 1000
     position.pose.position.z = z_mean_ned / 1000
-    estimated_orientation = yaw_pitch_roll_to_quat(old_yaw, 0, 0)
+    estimated_orientation = ekf.yaw_pitch_roll_to_quat(old_yaw, 0, 0)
     position.pose.orientation.w = estimated_orientation.w
     position.pose.orientation.x = estimated_orientation.x
     position.pose.orientation.y = estimated_orientation.y
     position.pose.orientation.z = estimated_orientation.z
-    #publisher_position.publish(position)
+    publisher_position.publish(position)
 
-
-    msg_twist=TwistStamped()
+    msg_twist = TwistStamped()
     msg_twist.header.stamp = rospy.Time.now()
     msg_twist.header.frame_id = "global_tank"  # ned
-    msg_twist.twist.linear.x = estimated_position[3]
-    msg_twist.twist.linear.y = estimated_position[4]
-    msg_twist.twist.linear.z = estimated_position[5]
+    tmp = ekf.yaw_pitch_roll_to_quat(ekf.get_yaw_current(), ekf.get_pitch_current(), ekf.get_roll_current()).rotate(
+        np.asarray([[estimated_position[3]], [0], [0]]))
+    msg_twist.twist.linear.x = tmp[0]
+    msg_twist.twist.linear.y = tmp[1]
+    msg_twist.twist.linear.z = -tmp[2]
     publisher_twist.publish(msg_twist)
 
 
-def callback_orientation(msg):
-    global yaw_current, pitch_current, roll_current
+def callback_orientation(msg, ekf):
     rotation_body_frame = Quaternion(w=msg.pose.orientation.w,
                                      x=msg.pose.orientation.x,
                                      y=msg.pose.orientation.y,
@@ -122,7 +109,7 @@ def callback_orientation(msg):
     yaw_current = -yaw
     pitch_current = -pitch
     roll_current = -((roll + 360 / 180.0 * np.pi) % (np.pi * 2) - 180 / 180.0 * np.pi)
-
+    ekf.current_rotation(yaw_current, pitch_current, roll_current)
     # yaw_current = yaw
     # pitch_current = pitch
     # roll_current = roll
@@ -132,7 +119,7 @@ def callback(msg, tmp_list):
     """"""
     global old_yaw
     [ekf, publisher_position, publisher_mavros, broadcaster,
-     publisher_marker,publisher_twist] = tmp_list
+     publisher_marker, publisher_twist] = tmp_list
 
     # ekf algorithm
     # ekf.prediction()
@@ -167,7 +154,6 @@ def callback(msg, tmp_list):
         pitch = np.mean(orientation_yaw_pitch_roll[:, 1])
         roll = np.mean(orientation_yaw_pitch_roll[:, 2])
     else:
-        ekf.update(np.zeros((num_meas, 1 + state_dim)))
         yaw = old_yaw
     old_yaw = yaw
     # print "reale messungen: " + str(measurements)
@@ -189,11 +175,11 @@ def main():
 
     rospy.Subscriber("/tag_detections", AprilTagDetectionArray, callback,
                      [ekf, publisher_position, publisher_mavros, broadcaster,
-                      publisher_marker,publisher_twist], queue_size=1)
+                      publisher_marker, publisher_twist], queue_size=1)
     rospy.Subscriber("/mavros/imu/data", Imu, callback_imu,
                      [ekf, publisher_position, publisher_mavros, broadcaster,
-                      publisher_marker,publisher_twist], queue_size=1)
-    rospy.Subscriber("/mavros/local_position/pose_NED", PoseStamped, callback_orientation, queue_size=1)
+                      publisher_marker, publisher_twist], queue_size=1)
+    rospy.Subscriber("/mavros/local_position/pose_NED", PoseStamped, callback_orientation, ekf, queue_size=1)
 
     rospy.spin()
 
