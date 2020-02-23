@@ -4,7 +4,6 @@ from pyquaternion import Quaternion
 
 class ExtendedKalmanFilter(object):
     def __init__(self, x0=[1.0, 1.0, 0.5, 0]):  # states: x y z v(body frame)
-
         """ initialize EKF """
         self.__x_est_0 = np.array([[x0[0]], [x0[1]], [x0[2]], [x0[3]]]).reshape((4, 1))
         self.__x_est = self.__x_est_0
@@ -23,7 +22,7 @@ class ExtendedKalmanFilter(object):
         self.__sig_w1 = 0.05
         self.__sig_w2 = 0.05
         self.__sig_w3 = 0.05
-        self.__sig_w4 = 0.1
+        self.__sig_w4 = 0.05
         self.__q_mat = np.array(np.diag([self.__sig_w1 ** 2,
                                          self.__sig_w2 ** 2,
                                          self.__sig_w3 ** 2,
@@ -47,7 +46,7 @@ class ExtendedKalmanFilter(object):
         self.__f_mat = np.asarray([[1, 0, 0, 0],
                                    [0, 1, 0, 0],
                                    [0, 0, 1, 0],
-                                   [0, 0, 0, 0.99]])
+                                   [0, 0, 0, 0.98]])
 
     def yaw_pitch_roll_to_quat(self, yaw, pitch, roll):
         cy = np.cos(yaw * 0.5)
