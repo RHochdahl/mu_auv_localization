@@ -1,4 +1,5 @@
 import numpy as np
+from pyquaternion import Quaternion
 
 
 class ExtendedKalmanFilter(object):
@@ -15,8 +16,8 @@ class ExtendedKalmanFilter(object):
         self.__sig_x4 = 0.100
         self.__sig_x5 = 0.100
         self.__sig_x6 = 0.100
-        self.__under_n_tags_seen = 0
-        self.p = 2.0/10.0
+        self.__under_n_tags_seen = 1
+        self.p = 2.0 / 10.0
         self.__p_mat_0 = np.array(np.diag([self.__sig_x1 ** 2,
                                            self.__sig_x2 ** 2,
                                            self.__sig_x3 ** 2,
@@ -25,12 +26,12 @@ class ExtendedKalmanFilter(object):
                                            self.__sig_x6 ** 2]))
         self.__p_mat = self.__p_mat_0
         # process noise
-        self.__sig_w1 = 0.02
-        self.__sig_w2 = 0.02
-        self.__sig_w3 = 0.02
-        self.__sig_w4 = 0.01
-        self.__sig_w5 = 0.01
-        self.__sig_w6 = 0.01
+        self.__sig_w1 = 0.05
+        self.__sig_w2 = 0.05
+        self.__sig_w3 = 0.05
+        self.__sig_w4 = 0.05
+        self.__sig_w5 = 0.05
+        self.__sig_w6 = 0.05
         self.__q_mat = np.array(np.diag([self.__sig_w1 ** 2,
                                          self.__sig_w2 ** 2,
                                          self.__sig_w3 ** 2,
@@ -60,6 +61,16 @@ class ExtendedKalmanFilter(object):
                                    [0, 0, 0, 1, 0, 0],
                                    [0, 0, 0, 0, 1, 0],
                                    [0, 0, 0, 0, 0, 1]])
+
+    def yaw_pitch_roll_to_quat(self, yaw, pitch, roll):
+        cy = np.cos(yaw * 0.5)
+        sy = np.sin(yaw * 0.5)
+        cp = np.cos(pitch * 0.5)
+        sp = np.sin(pitch * 0.5)
+        cr = np.cos(roll * 0.5)
+        sr = np.sin(roll * 0.5)
+        return (Quaternion(x=cy * cp * sr - sy * sp * cr, y=sy * cp * sr + cy * sp * cr, z=sy * cp * cr - cy * sp * sr,
+                           w=cy * cp * cr + sy * sp * sr))
 
     def set_x_0(self, x0):
         self.__x_est = x0
@@ -127,12 +138,21 @@ class ExtendedKalmanFilter(object):
 
         return h_jac  # dim [num_tag X 3]
 
-    def prediction(self, accel_x, accel_y, accel_z):
+    def prediction(self, x_rot_vel, y_rot_vel, z_rot_vel):
         """ prediction """
         # accel_x=0
-        self.__x_est = np.matmul(self.__f_mat, self.__x_est) + np.asarray(
-            [[0], [0], [0], [accel_x / self.frequency_prediction], [accel_y / self.frequency_prediction],
-             [accel_z / self.frequency_prediction]])  # prediction = f * x_est + u
+        # self.__x_est = np.matmul(self.__f_mat, self.__x_est) + np.asarray([[0], [0], [0], [accel_x / self.frequency_prediction], [accel_y / self.frequency_prediction],[accel_z / self.frequency_prediction]])  # prediction = f * x_est + u
+        yaw_current_diff = -z_rot_vel / self.frequency_prediction
+        print("yaw_current", yaw_current_diff)
+        rotation = self.yaw_pitch_roll_to_quat(yaw_current_diff, 0, 0)
+        update_x_y_z = rotation.rotate(
+            np.asarray([[self.__x_est[3]], [self.__x_est[4]], [self.__x_est[5]]]))
+        print("old:", [self.__x_est[3]], [self.__x_est[4]], [self.__x_est[5]])
+        print("update:", update_x_y_z)
+        self.__x_est[3] = update_x_y_z[0]
+        self.__x_est[4] = update_x_y_z[1]
+        self.__x_est[5] = update_x_y_z[2]
+        self.__x_est = np.matmul(self.__f_mat, self.__x_est)
         self.__p_mat = np.matmul(self.__f_mat, np.matmul(self.__p_mat, np.transpose(self.__f_mat))) + self.__q_mat
         # print(self.__p_mat)
         return True
@@ -141,15 +161,14 @@ class ExtendedKalmanFilter(object):
         """ innovation """
         num_meas = z_meas_tags.shape[0]
         # get new measurement
-        if num_meas < 3:
-            self.__under_n_tags_seen = self.__under_n_tags_seen + (3-num_meas)*self.p
-            if self.__under_n_tags_seen > 10*self.p:
-                self.__under_n_tags_seen = 10*self.p
-        else:
-            self.__under_n_tags_seen = self.__under_n_tags_seen - num_meas*self.p
-            if self.__under_n_tags_seen < 1:
-                self.__under_n_tags_seen = 1
-        print(self.__under_n_tags_seen)
+        # if num_meas < 3:
+        #     self.__under_n_tags_seen = self.__under_n_tags_seen + (3-num_meas)*self.p
+        #     if self.__under_n_tags_seen > 10*self.p:
+        #         self.__under_n_tags_seen = 10*self.p
+        # else:
+        #     self.__under_n_tags_seen = self.__under_n_tags_seen - num_meas*self.p
+        #     if self.__under_n_tags_seen < 1:
+        #         self.__under_n_tags_seen = 1
         z_meas = z_meas_tags[:, 0].reshape(num_meas, 1)
 
         # estimate measurement from x_est
@@ -186,7 +205,7 @@ class ExtendedKalmanFilter(object):
         # velocity calculation:
         # innovation y=z-h(x)
         y_vel = (self.__x_est[0:3] - self.__x_est_last_step[0:3]) / (
-                    1.0 / self.frequency_update) / self.__under_n_tags_seen - self.__x_est[3:6]
+                1.0 / self.frequency_update) / self.__under_n_tags_seen - self.__x_est[3:6]
 
         s_k_mat = self.__p_mat[3:6, 3:6] + self.__v_mat
         kalman_gain_v = np.matmul(self.__p_mat[3:6, 3:6], np.linalg.inv(s_k_mat))

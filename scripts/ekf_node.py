@@ -31,8 +31,8 @@ old_yaw = 0
 # res = set_mode_srv(0, " OFFBOARD")
 
 rospack = rospkg.RosPack()
-#data_path = rospack.get_path("mu_auv_localization")+'/scripts/calibration_ground_truth_gazebo.csv' # in gazebo
-data_path = rospack.get_path("mu_auv_localization") + '/scripts/calibration_tank.csv'  # in real tank
+data_path = rospack.get_path("mu_auv_localization")+'/scripts/calibration_ground_truth_gazebo.csv' # in gazebo
+# data_path = rospack.get_path("mu_auv_localization") + '/scripts/calibration_tank.csv'  # in real tank
 tags = genfromtxt(data_path, delimiter=',')  # home PC
 
 tags = tags[:, 0:4]
@@ -62,8 +62,11 @@ def callback_imu(msg, tmp_list):
 
     tmp = yaw_pitch_roll_to_quat(yaw_current, pitch_current, roll_current).rotate(
         np.asarray([[-msg.linear_acceleration.x], [msg.linear_acceleration.y], [msg.linear_acceleration.z]]))
+    x_rot_vel = msg.angular_velocity.x
+    y_rot_vel = msg.angular_velocity.y
+    z_rot_vel = msg.angular_velocity.z
     #ekf.prediction(tmp[0], tmp[1], tmp[2] - 9.81)
-    ekf.prediction(0, 0, 0)
+    ekf.prediction(0, 0, z_rot_vel)
 
     estimated_orientation = yaw_pitch_roll_to_quat(-(old_yaw - np.pi / 2), 0, 0)
     estimated_position = ekf.get_x_est()
@@ -100,7 +103,7 @@ def callback_imu(msg, tmp_list):
     position.pose.orientation.x = estimated_orientation.x
     position.pose.orientation.y = estimated_orientation.y
     position.pose.orientation.z = estimated_orientation.z
-    #publisher_position.publish(position)
+    publisher_position.publish(position)
 
 
     msg_twist=TwistStamped()
@@ -147,7 +150,7 @@ def callback(msg, tmp_list):
         for i, tag in enumerate(msg.detections):
             tag_id = int(tag.id[0])
             tag_distance_cam = np.array(([tag.pose.pose.pose.position.x * 1.05,
-                                          tag.pose.pose.pose.position.y * 1.1,
+                                          tag.pose.pose.pose.position.y * 1.1-0.1,
                                           tag.pose.pose.pose.position.z]))
             measurements[i, 0] = np.linalg.norm(tag_distance_cam)
             tmpquat = Quaternion(w=tag.pose.pose.pose.orientation.w,
