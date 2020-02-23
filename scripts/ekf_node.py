@@ -50,7 +50,7 @@ def callback_imu(msg, tmp_list):
     x_rot_vel = msg.angular_velocity.x
     y_rot_vel = msg.angular_velocity.y
     z_rot_vel = msg.angular_velocity.z
-    ekf.prediction(x_rot_vel, y_rot_vel, z_rot_vel,imu_x)
+    ekf.prediction(x_rot_vel, y_rot_vel, z_rot_vel)
 
     estimated_orientation = ekf.yaw_pitch_roll_to_quat(-(old_yaw - np.pi / 2), 0, 0)
     estimated_position = ekf.get_x_est()
