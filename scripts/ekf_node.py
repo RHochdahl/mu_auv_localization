@@ -31,8 +31,8 @@ old_yaw = 0
 # res = set_mode_srv(0, " OFFBOARD")
 
 rospack = rospkg.RosPack()
-data_path = rospack.get_path("mu_auv_localization")+'/scripts/calibration_ground_truth_gazebo.csv' # in gazebo
-# data_path = rospack.get_path("mu_auv_localization") + '/scripts/calibration_tank.csv'  # in real tank
+# data_path = rospack.get_path("mu_auv_localization")+'/scripts/calibration_ground_truth_gazebo.csv' # in gazebo
+data_path = rospack.get_path("mu_auv_localization") + '/scripts/calibration_tank.csv'  # in real tank
 tags = genfromtxt(data_path, delimiter=',')  # home PC
 
 tags = tags[:, 0:4]
@@ -78,18 +78,7 @@ def callback_imu(msg, tmp_list):
 
     # publish estimated_pose [m] in mavros to /mavros/vision_pose/pose
     # this pose needs to be in ENU
-    mavros_position = PoseStamped()
-    mavros_position.header.stamp = rospy.Time.now()
-    mavros_position.header.frame_id = "map"
-    mavros_position.pose.position.x = y_mean_ned / 1000  # NED Coordinate to ENU(ROS)
-    mavros_position.pose.position.y = x_mean_ned / 1000
-    mavros_position.pose.position.z = - z_mean_ned / 1000
 
-    mavros_position.pose.orientation.w = estimated_orientation.w
-    mavros_position.pose.orientation.x = estimated_orientation.x
-    mavros_position.pose.orientation.y = estimated_orientation.y
-    mavros_position.pose.orientation.z = estimated_orientation.z
-    publisher_mavros.publish(mavros_position)  # oublish to boat
 
     # publish estimated_pose [m]
     position = PoseStamped()
@@ -150,7 +139,7 @@ def callback(msg, tmp_list):
         for i, tag in enumerate(msg.detections):
             tag_id = int(tag.id[0])
             tag_distance_cam = np.array(([tag.pose.pose.pose.position.x * 1.05,
-                                          tag.pose.pose.pose.position.y * 1.1-0.1,
+                                          tag.pose.pose.pose.position.y * 1.1,
                                           tag.pose.pose.pose.position.z]))
             measurements[i, 0] = np.linalg.norm(tag_distance_cam)
             tmpquat = Quaternion(w=tag.pose.pose.pose.orientation.w,
@@ -176,6 +165,26 @@ def callback(msg, tmp_list):
     # print "reale messungen: " + str(measurements)
     print("Angle yaw: " + str(np.round(yaw * 180 / np.pi, decimals=2)) + ", x_est = " + str(
         ekf.get_x_est().transpose()))
+
+    estimated_orientation = yaw_pitch_roll_to_quat(-(old_yaw - np.pi / 2), 0, 0)
+    estimated_position = ekf.get_x_est()
+
+    # [mm]
+    x_mean_ned = estimated_position[0] * 1000  # global Tank Koordinate System(NED)
+    y_mean_ned = estimated_position[1] * 1000
+    z_mean_ned = estimated_position[2] * 1000
+    mavros_position = PoseStamped()
+    mavros_position.header.stamp = rospy.Time.now()
+    mavros_position.header.frame_id = "map"
+    mavros_position.pose.position.x = y_mean_ned / 1000  # NED Coordinate to ENU(ROS)
+    mavros_position.pose.position.y = x_mean_ned / 1000
+    mavros_position.pose.position.z = - z_mean_ned / 1000
+
+    mavros_position.pose.orientation.w = estimated_orientation.w
+    mavros_position.pose.orientation.x = estimated_orientation.x
+    mavros_position.pose.orientation.y = estimated_orientation.y
+    mavros_position.pose.orientation.z = estimated_orientation.z
+    publisher_mavros.publish(mavros_position)  # oublish to boat
 
 
 def main():
