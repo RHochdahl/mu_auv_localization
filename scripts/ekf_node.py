@@ -27,8 +27,8 @@ old_yaw = 0
 # res = set_mode_srv(0, " OFFBOARD")
 
 rospack = rospkg.RosPack()
-data_path = rospack.get_path("mu_auv_localization")+'/scripts/calibration_ground_truth_gazebo.csv' # in gazebo
-# data_path = rospack.get_path("mu_auv_localization") + '/scripts/calibration_tank.csv'  # in real tank
+# data_path = rospack.get_path("mu_auv_localization")+'/scripts/calibration_ground_truth_gazebo.csv' # in gazebo
+data_path = rospack.get_path("mu_auv_localization") + '/scripts/calibration_tank.csv'  # in real tank
 # tags = genfromtxt('/home/pi/catkin_ws/src/muAUV-localization_ros/scripts/calibration_tank.csv', delimiter=',')#pi PC
 tags = genfromtxt(data_path, delimiter=',')  # home PC
 
