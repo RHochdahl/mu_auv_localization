@@ -143,8 +143,10 @@ class ExtendedKalmanFilter(object):
         # accel_x=0
         # self.__x_est = np.matmul(self.__f_mat, self.__x_est) + np.asarray([[0], [0], [0], [accel_x / self.frequency_prediction], [accel_y / self.frequency_prediction],[accel_z / self.frequency_prediction]])  # prediction = f * x_est + u
         yaw_current_diff = -z_rot_vel / self.frequency_prediction
+        pitch_current_diff = -y_rot_vel / self.frequency_prediction
+        roll_current_diff = -x_rot_vel / self.frequency_prediction
         print("yaw_current", yaw_current_diff)
-        rotation = self.yaw_pitch_roll_to_quat(yaw_current_diff, 0, 0)
+        rotation = self.yaw_pitch_roll_to_quat(yaw_current_diff, pitch_current_diff, roll_current_diff)
         update_x_y_z = rotation.rotate(
             np.asarray([[self.__x_est[3]], [self.__x_est[4]], [self.__x_est[5]]]))
         print("old:", [self.__x_est[3]], [self.__x_est[4]], [self.__x_est[5]])
