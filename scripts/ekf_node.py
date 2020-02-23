@@ -33,7 +33,7 @@ old_yaw = 0
 rospack = rospkg.RosPack()
 # data_path = rospack.get_path("mu_auv_localization")+'/scripts/calibration_ground_truth_gazebo.csv' # in gazebo
 data_path = rospack.get_path("mu_auv_localization") + '/scripts/calibration_tank.csv'  # in real tank
-tags = genfromtxt(data_path, delimiter=',')  # home PC
+tags = genfromtxt(data_path, delimiter=',') # home PC
 
 tags = tags[:, 0:4]
 print(tags)
