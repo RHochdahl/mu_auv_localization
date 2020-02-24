@@ -1,5 +1,6 @@
 import numpy as np
 from pyquaternion import Quaternion
+import rospy
 
 
 class ExtendedKalmanFilter(object):
@@ -8,6 +9,8 @@ class ExtendedKalmanFilter(object):
         self.__x_est_0 = np.array([[x0[0]], [x0[1]], [x0[2]], [x0[3]]]).reshape((4, 1))
         self.__x_est = self.__x_est_0
         self.__x_est_last_step = self.__x_est
+        self.__last_time_stamp_update = rospy.get_time()
+        self.__last_time_stamp_prediction = rospy.get_time()
         # standard deviations
         self.__sig_x1 = 0.200
         self.__sig_x2 = 0.200
@@ -40,8 +43,6 @@ class ExtendedKalmanFilter(object):
         self.yaw_current = 0
         self.pitch_current = 0
         self.roll_current = 0
-        self.frequency_prediction = 50
-        self.frequency_update = 10
         # initial values and system dynamic (=eye)
         self.__f_mat = np.asarray([[1, 0, 0, 0],
                                    [0, 1, 0, 0],
@@ -138,16 +139,22 @@ class ExtendedKalmanFilter(object):
         self.pitch_current = pitch_current
         self.roll_current = roll_current
 
+    def update_velocity_if_nothing_is_seen(self):
+        self.__x_est[3] = self.__x_est[3] * 1.1
+
     def prediction(self, x_rot_vel, y_rot_vel, z_rot_vel):
         """ prediction """
         # accel_x=0
-
-        self.yaw_current = self.yaw_current - z_rot_vel / self.frequency_prediction
-        self.pitch_current = self.pitch_current - y_rot_vel / self.frequency_prediction  # nicht sicher ob das richtig ist
-        self.roll_current = self.roll_current + x_rot_vel / self.frequency_prediction  # nicht sicher ob das richtig ist
+        delta_t = rospy.get_time() - self.__last_time_stamp_prediction
+        self.__last_time_stamp_prediction = rospy.get_time()
+        if delta_t == 0:
+            delta_t = 0.02
+        self.yaw_current = self.yaw_current - z_rot_vel * delta_t
+        self.pitch_current = self.pitch_current - y_rot_vel * delta_t  # nicht sicher ob das richtig ist
+        self.roll_current = self.roll_current + x_rot_vel * delta_t  # nicht sicher ob das richtig ist
         rotation = self.yaw_pitch_roll_to_quat(self.yaw_current, self.pitch_current, self.roll_current)
         update_x_y_z = rotation.rotate(
-            np.asarray([[self.__x_est[3] / self.frequency_prediction], [0], [0]]))  # yaw_pitch_roll_to_quat
+            np.asarray([[self.__x_est[3] * delta_t], [0], [0]]))  # yaw_pitch_roll_to_quat
         # update_x_y_z = rotation.rotate(np.asarray([[0], [0], [0]]))
         update_x_y_z_v = np.asarray([[update_x_y_z[0]], [update_x_y_z[1]], [update_x_y_z[2]], [0]])
         # print(update_x_y_z_v)
@@ -165,7 +172,7 @@ class ExtendedKalmanFilter(object):
         # estimate measurement from x_est
         z_est = self.h(self.__x_est[0:3], z_meas_tags)
         z_tild = z_meas - z_est
-
+        print(z_tild)
         # calc K-gain
         h_jac_mat = self.h_jacobian(self.__x_est[0:3], z_meas_tags)
 
@@ -195,13 +202,30 @@ class ExtendedKalmanFilter(object):
         #    self.__p_mat[0:3, 0:3])  # = (I-KH)*P
         # velocity calculation:
         # innovation y=z-h(x)
-        z_vel = np.linalg.norm(self.__x_est[0:3] - self.__x_est_last_step[0:3]) / (
-                1.0 / self.frequency_update)
-        if z_vel > 0.7:
-            print("vel to high")
-            z_vel = 0.7
-        y_vel = z_vel - self.__x_est[3]
 
+        angle_velocity = np.arctan2(self.__x_est[1] - self.__x_est_last_step[1],
+                                    self.__x_est[0] - self.__x_est_last_step[0])
+        # print("arctan2:",angle_velocity)
+        # print("y_est",self.__x_est[1],"y_las_step:",self.__x_est_last_step[1],"x_est:", self.__x_est[0] ,"x_las_step", self.__x_est_last_step[0])
+        # print("current_Yaw", self.yaw_current)
+
+        scaling = np.cos(
+            np.arctan2(np.sin(angle_velocity - self.yaw_current), np.cos(angle_velocity - self.yaw_current)))
+        if abs(np.arctan2(np.sin(angle_velocity - self.yaw_current),
+                          np.cos(angle_velocity - self.yaw_current))) > np.pi / 2:
+            scaling = 0
+        # print(scaling)
+        delta_t = rospy.get_time() - self.__last_time_stamp_update
+        if delta_t == 0:
+            delta_t = 0.1
+        z_vel = np.linalg.norm(self.__x_est[0:3] - self.__x_est_last_step[0:3]) / delta_t  # * scaling
+        if z_vel > 0.7:
+            # print("vel to high:", z_vel,delta_t)
+            z_vel = 0.0
+            self.__x_est[3] = 0
+        y_vel = z_vel - self.__x_est[3]
+        # gain_vel_covarianz=(1+abs(np.linalg.norm(self.__x_est[0:3] - self.__x_est_last_step[0:3]))*100)
+        # print(gain_vel_covarianz)
         s_k_mat = self.__p_mat[3, 3] + self.__v_mat
         kalman_gain_v = self.__p_mat[3, 3] / s_k_mat
         p_update = np.zeros((4, 4))
@@ -212,11 +236,14 @@ class ExtendedKalmanFilter(object):
         p_update[0:3, 0:3] = (np.eye(3) - np.matmul(k_mat[:, b_tag_in_range[:, 0]], h_jac_mat[b_tag_in_range[:, 0], :]))
         p_update[3, 3] = (1 - kalman_gain_v)
         self.__p_mat = np.matmul(p_update, self.__p_mat)
-
+        # if z_vel > 1:
+        # print("vel to high:", z_vel,delta_t)
+        #    self.__x_est[3] = 0
         # print("after estimation")
         # print(self.__x_est)
         # save last state
         self.__x_est_last_step = np.copy(self.__x_est)
+        self.__last_time_stamp_update = rospy.get_time()
 
         if self.__x_est[0] > 5 or np.isnan(self.__x_est[0]) or self.__x_est[0] < -1:
             self.__x_est[0] = 1.5
@@ -227,7 +254,7 @@ class ExtendedKalmanFilter(object):
             self.__x_est_last_step[1] = self.__x_est[1]
             self.__p_mat[1] = self.__p_mat_0[1]
 
-        if self.__x_est[2] > 2 or np.isnan(self.__x_est[2]) or self.__x_est[2] < -1:
+        if self.__x_est[2] > 1.5 or np.isnan(self.__x_est[2]) or self.__x_est[2] < -0.2:
             self.__x_est[2] = 0.5
             self.__x_est_last_step[2] = self.__x_est[2]
             self.__p_mat[2] = self.__p_mat_0[2]
