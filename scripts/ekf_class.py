@@ -46,7 +46,7 @@ class ExtendedKalmanFilter(object):
         self.__f_mat = np.asarray([[1, 0, 0, 0],
                                    [0, 1, 0, 0],
                                    [0, 0, 1, 0],
-                                   [0, 0, 0, 1]])
+                                   [0, 0, 0, 0.98]])
 
     def yaw_pitch_roll_to_quat(self, yaw, pitch, roll):
         cy = np.cos(yaw * 0.5)
@@ -143,8 +143,8 @@ class ExtendedKalmanFilter(object):
         # accel_x=0
 
         self.yaw_current = self.yaw_current - z_rot_vel / self.frequency_prediction
-        #self.pitch_current = self.pitch_current - y_rot_vel / self.frequency_prediction  # nicht sicher ob das richtig ist
-        #self.roll_current = self.roll_current + x_rot_vel / self.frequency_prediction  # nicht sicher ob das richtig ist
+        self.pitch_current = self.pitch_current - y_rot_vel / self.frequency_prediction  # nicht sicher ob das richtig ist
+        self.roll_current = self.roll_current + x_rot_vel / self.frequency_prediction  # nicht sicher ob das richtig ist
         rotation = self.yaw_pitch_roll_to_quat(self.yaw_current, self.pitch_current, self.roll_current)
         update_x_y_z = rotation.rotate(
             np.asarray([[self.__x_est[3] / self.frequency_prediction], [0], [0]]))  # yaw_pitch_roll_to_quat
