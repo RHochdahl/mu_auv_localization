@@ -197,8 +197,9 @@ class ExtendedKalmanFilter(object):
         # innovation y=z-h(x)
         z_vel = np.linalg.norm(self.__x_est[0:3] - self.__x_est_last_step[0:3]) / (
                 1.0 / self.frequency_update)
-        if z_vel > 1:
-            z_vel = 1
+        if z_vel > 0.7:
+            print("vel to high")
+            z_vel = 0.7
         y_vel = z_vel - self.__x_est[3]
 
         s_k_mat = self.__p_mat[3, 3] + self.__v_mat
