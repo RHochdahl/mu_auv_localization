@@ -52,9 +52,10 @@ def callback_imu(msg, tmp_list):
     z_rot_vel = msg.angular_velocity.z
     ekf.prediction(x_rot_vel, y_rot_vel, z_rot_vel)
 
-    estimated_orientation = ekf.yaw_pitch_roll_to_quat(-(old_yaw - np.pi / 2), 0, 0)
     estimated_position = ekf.get_x_est()
 
+
+    estimated_orientation = ekf.yaw_pitch_roll_to_quat(-(old_yaw - np.pi / 2), 0, 0)
     # [mm]
     x_mean_ned = estimated_position[0] * 1000  # global Tank Koordinate System(NED)
     y_mean_ned = estimated_position[1] * 1000
@@ -62,6 +63,18 @@ def callback_imu(msg, tmp_list):
 
     # publish estimated_pose [m] in mavros to /mavros/vision_pose/pose
     # this pose needs to be in ENU
+    mavros_position = PoseStamped()
+    mavros_position.header.stamp = rospy.Time.now()
+    mavros_position.header.frame_id = "map"
+    mavros_position.pose.position.x = y_mean_ned / 1000  # NED Coordinate to ENU(ROS)
+    mavros_position.pose.position.y = x_mean_ned / 1000
+    mavros_position.pose.position.z = - z_mean_ned / 1000
+
+    mavros_position.pose.orientation.w = estimated_orientation.w
+    mavros_position.pose.orientation.x = estimated_orientation.x
+    mavros_position.pose.orientation.y = estimated_orientation.y
+    mavros_position.pose.orientation.z = estimated_orientation.z
+    publisher_mavros.publish(mavros_position)  # oublish to boat
 
 
     # publish estimated_pose [m]
@@ -76,7 +89,7 @@ def callback_imu(msg, tmp_list):
     position.pose.orientation.x = estimated_orientation.x
     position.pose.orientation.y = estimated_orientation.y
     position.pose.orientation.z = estimated_orientation.z
-    publisher_position.publish(position)
+    #publisher_position.publish(position)
 
     msg_twist = TwistStamped()
     msg_twist.header.stamp = rospy.Time.now()
@@ -99,9 +112,6 @@ def callback_orientation(msg, ekf):
     pitch_current = -pitch
     roll_current = -((roll + 360 / 180.0 * np.pi) % (np.pi * 2) - 180 / 180.0 * np.pi)
     ekf.current_rotation(yaw_current, pitch_current, roll_current)
-    # yaw_current = yaw
-    # pitch_current = pitch
-    # roll_current = roll
 
 
 def callback(msg, tmp_list):
@@ -109,9 +119,6 @@ def callback(msg, tmp_list):
     global old_yaw
     [ekf, publisher_position, publisher_mavros, broadcaster,
      publisher_marker, publisher_twist] = tmp_list
-
-    # ekf algorithm
-    # ekf.prediction()
 
     # get length of message
     num_meas = len(msg.detections)
@@ -148,7 +155,6 @@ def callback(msg, tmp_list):
     # print "reale messungen: " + str(measurements)
     print("Angle yaw: " + str(np.round(yaw * 180 / np.pi, decimals=2)) + ", x_est = " + str(
         ekf.get_x_est().transpose()))
-
     estimated_orientation = ekf.yaw_pitch_roll_to_quat(-(old_yaw - np.pi / 2), 0, 0)
     estimated_position = ekf.get_x_est()
 
@@ -167,7 +173,7 @@ def callback(msg, tmp_list):
     mavros_position.pose.orientation.x = estimated_orientation.x
     mavros_position.pose.orientation.y = estimated_orientation.y
     mavros_position.pose.orientation.z = estimated_orientation.z
-    publisher_mavros.publish(mavros_position)  # oublish to boat
+    #publisher_mavros.publish(mavros_position)  # oublish to boat
 
 
 def main():
