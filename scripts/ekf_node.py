@@ -28,8 +28,8 @@ old_yaw = 0
 # res = set_mode_srv(0, " OFFBOARD")
 
 rospack = rospkg.RosPack()
-# data_path = rospack.get_path("mu_auv_localization") + '/scripts/calibration_ground_truth_gazebo.csv'  # in gazebo
-data_path = rospack.get_path("mu_auv_localization") + '/scripts/calibration_tank.csv'  # in real tank
+data_path = rospack.get_path("mu_auv_localization") + '/scripts/calibration_ground_truth_gazebo.csv'  # in gazebo
+# data_path = rospack.get_path("mu_auv_localization") + '/scripts/calibration_tank.csv'  # in real tank
 tags = genfromtxt(data_path, delimiter=',')  # home PC
 
 tags = tags[:, 0:4]
@@ -74,7 +74,7 @@ def callback_imu(msg, tmp_list):
     mavros_position.pose.orientation.x = estimated_orientation.x
     mavros_position.pose.orientation.y = estimated_orientation.y
     mavros_position.pose.orientation.z = estimated_orientation.z
-    publisher_mavros.publish(mavros_position)  # oublish to boat
+    #publisher_mavros.publish(mavros_position)  # oublish to boat
 
 
     # publish estimated_pose [m]
@@ -89,7 +89,7 @@ def callback_imu(msg, tmp_list):
     position.pose.orientation.x = estimated_orientation.x
     position.pose.orientation.y = estimated_orientation.y
     position.pose.orientation.z = estimated_orientation.z
-    #publisher_position.publish(position)
+    publisher_position.publish(position)
 
     msg_twist = TwistStamped()
     msg_twist.header.stamp = rospy.Time.now()
@@ -130,7 +130,7 @@ def callback(msg, tmp_list):
         for i, tag in enumerate(msg.detections):
             tag_id = int(tag.id[0])
             tag_distance_cam = np.array(([tag.pose.pose.pose.position.x * 1.05,
-                                          tag.pose.pose.pose.position.y * 1.1,
+                                          tag.pose.pose.pose.position.y * 1.1-0.1,
                                           tag.pose.pose.pose.position.z]))#Achtung hier ist die 0.1 wegen der kamera position hinzugefuegt
             measurements[i, 0] = np.linalg.norm(tag_distance_cam)
             tmpquat = Quaternion(w=tag.pose.pose.pose.orientation.w,
@@ -173,7 +173,7 @@ def callback(msg, tmp_list):
     mavros_position.pose.orientation.x = estimated_orientation.x
     mavros_position.pose.orientation.y = estimated_orientation.y
     mavros_position.pose.orientation.z = estimated_orientation.z
-    #publisher_mavros.publish(mavros_position)  # oublish to boat
+    publisher_mavros.publish(mavros_position)  # oublish to boat
 
 
 def main():
