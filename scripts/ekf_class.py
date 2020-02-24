@@ -1,6 +1,7 @@
 import numpy as np
 from pyquaternion import Quaternion
 
+
 class ExtendedKalmanFilter(object):
     def __init__(self, x0=[1.0, 1.0, 0.5, 0]):  # states: x y z v(body frame)
         """ initialize EKF """
@@ -141,9 +142,9 @@ class ExtendedKalmanFilter(object):
         """ prediction """
         # accel_x=0
 
-        self.yaw_current = self.yaw_current-z_rot_vel / self.frequency_prediction
-        self.pitch_current = self.pitch_current - y_rot_vel / self.frequency_prediction#nicht sicher ob das richtig ist
-        self.roll_current = self.roll_current + x_rot_vel / self.frequency_prediction#nicht sicher ob das richtig ist
+        self.yaw_current = self.yaw_current - z_rot_vel / self.frequency_prediction
+        self.pitch_current = self.pitch_current - y_rot_vel / self.frequency_prediction  # nicht sicher ob das richtig ist
+        self.roll_current = self.roll_current + x_rot_vel / self.frequency_prediction  # nicht sicher ob das richtig ist
         rotation = self.yaw_pitch_roll_to_quat(self.yaw_current, self.pitch_current, self.roll_current)
         update_x_y_z = rotation.rotate(
             np.asarray([[self.__x_est[3] / self.frequency_prediction], [0], [0]]))  # yaw_pitch_roll_to_quat
@@ -198,7 +199,7 @@ class ExtendedKalmanFilter(object):
                 1.0 / self.frequency_update)
         if z_vel > 1:
             z_vel = 1
-        y_vel =  z_vel- self.__x_est[3]
+        y_vel = z_vel - self.__x_est[3]
 
         s_k_mat = self.__p_mat[3, 3] + self.__v_mat
         kalman_gain_v = self.__p_mat[3, 3] / s_k_mat
@@ -229,7 +230,7 @@ class ExtendedKalmanFilter(object):
             self.__x_est[2] = 0.5
             self.__x_est_last_step[2] = self.__x_est[2]
             self.__p_mat[2] = self.__p_mat_0[2]
-        if self.__x_est[3]>1:
-            self.__x_est[3]=1
+        if self.__x_est[3] > 1:
+            self.__x_est[3] = 1
 
         return True
