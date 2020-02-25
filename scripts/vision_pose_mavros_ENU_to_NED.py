@@ -78,6 +78,7 @@ def callback_april_number(msg):
     publish_msg.pose.position.x = len(msg.detections)
     publisher_number_of_tags.publish(publish_msg)
 
+
 def main():
     rospy.init_node('enu_to_ned')
     global rate
