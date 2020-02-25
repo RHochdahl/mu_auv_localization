@@ -87,7 +87,7 @@ def callback_imu(msg, tmp_list):
     position.pose.orientation.x = estimated_orientation.x
     position.pose.orientation.y = estimated_orientation.y
     position.pose.orientation.z = estimated_orientation.z
-    publisher_position.publish(position)
+    #publisher_position.publish(position)
 
     msg_twist = TwistStamped()
     msg_twist.header.stamp = rospy.Time.now()
@@ -126,7 +126,7 @@ def callback(msg, tmp_list):
     orientation_yaw_pitch_roll = np.zeros((num_meas, 3))
 
     # if new measurement: update particles
-    if num_meas >= 1:
+    if num_meas >= 3:
         measurements = np.zeros((num_meas, 1 + state_dim))
         for i, tag in enumerate(msg.detections):
             tag_id = int(tag.id[0])
