@@ -191,7 +191,7 @@ class ExtendedKalmanFilter(object):
         r_mat_temp = np.eye(num_meas) * self.__r_mat  # same measurement noise for all measurements, for the moment
 
         s_mat = np.dot(h_jac_mat, np.dot(self.__p_mat[0:3, 0:3], h_jac_mat.transpose())) + r_mat_temp
-        #print("s_mat", s_mat)
+        # print("s_mat", s_mat)
         s_diag = np.diag(s_mat)
         # compute k_mat in an interative way
         for i_tag in range(num_meas):
