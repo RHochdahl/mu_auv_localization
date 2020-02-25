@@ -25,7 +25,7 @@ class ExtendedKalmanFilter(object):
         self.__sig_w1 = 0.05
         self.__sig_w2 = 0.05
         self.__sig_w3 = 0.05
-        self.__sig_w4 = 0.05
+        self.__sig_w4 = 0.01
         self.__q_mat = np.array(np.diag([self.__sig_w1 ** 2,
                                          self.__sig_w2 ** 2,
                                          self.__sig_w3 ** 2,
@@ -33,9 +33,9 @@ class ExtendedKalmanFilter(object):
 
         # measurement noise
         # --> see measurement_covariance_model
-        self.__sig_x = 2
-        self.__sig_y = 2
-        self.__sig_z = 2
+        self.__sig_x = 1
+        self.__sig_y = 1
+        self.__sig_z = 1
 
         self.__xyz_meas_noise = np.array(np.diag([self.__sig_x ** 2,
                                                   self.__sig_y ** 2,
@@ -53,7 +53,7 @@ class ExtendedKalmanFilter(object):
         self.__f_mat = np.asarray([[1, 0, 0, 0],
                                    [0, 1, 0, 0],
                                    [0, 0, 1, 0],
-                                   [0, 0, 0, 0]])
+                                   [0, 0, 0, 0.98]])
 
     def yaw_pitch_roll_to_quat(self, yaw, pitch, roll):
         cy = np.cos(yaw * 0.5)
@@ -129,8 +129,7 @@ class ExtendedKalmanFilter(object):
             # dh /dx3
             h_jac_x3 = -np.transpose(rotation[:, 2])
 
-            h_jac[i, :, :] = [h_jac_x1, h_jac_x2, h_jac_x3]
-
+            h_jac[i, :, :] = np.transpose([h_jac_x1, h_jac_x2, h_jac_x3])
         return h_jac  # dim [num_tag X 3 X 3]
 
     def current_rotation(self, yaw_current, pitch_current, roll_current):
@@ -159,7 +158,8 @@ class ExtendedKalmanFilter(object):
         update_x_y_z = rotation.rotate(
             np.asarray([[self.__x_est[3] * delta_t], [0], [0]]))  # yaw_pitch_roll_to_quat
         # update_x_y_z = rotation.rotate(np.asarray([[0], [0], [0]]))
-        update_x_y_z_v = np.asarray([[update_x_y_z[0]], [update_x_y_z[1]], [update_x_y_z[2]], [0]])*0#HIRE DAISODBNSAONDPSADNBAS DU
+        update_x_y_z_v = np.asarray(
+            [[update_x_y_z[0]], [update_x_y_z[1]], [update_x_y_z[2]], [0]])
         # print(update_x_y_z_v)
         self.__x_est = np.matmul(self.__f_mat, self.__x_est) + update_x_y_z_v  # prediction = f * x_est + u
         self.__p_mat = np.matmul(self.__f_mat, np.matmul(self.__p_mat, np.transpose(self.__f_mat))) + self.__q_mat
@@ -171,13 +171,13 @@ class ExtendedKalmanFilter(object):
         num_meas = z_meas_tags.shape[0]
         # get new measurement
         z_meas = z_meas_tags[:, 0:3].reshape(num_meas, 3)
-        #print("yaw_meas", yaw_meas)
-        #print("z_meas", np.transpose(z_meas.round(decimals=3)))
+        # print("yaw_meas", yaw_meas)
+        # print("z_meas", np.transpose(z_meas.round(decimals=3)))
         # estimate measurement from x_est
         z_est = self.h(self.__x_est[0:3], z_meas_tags, yaw_meas)
         z_tild = z_meas - z_est
-        #print("z_est", np.transpose(z_est.round(decimals=3)))
-        #print("z_tild", np.transpose(z_tild.round(decimals=3)))
+        # print("z_est", np.transpose(z_est.round(decimals=3)))
+        # print("z_tild", np.transpose(z_tild.round(decimals=3)))
         # calc K-gain
         h_jac_mat = self.h_jacobian(self.__x_est[0:3], z_meas_tags, yaw_meas)
         # print("h_jac_mat", h_jac_mat)
@@ -190,19 +190,22 @@ class ExtendedKalmanFilter(object):
         for i_tag in range(num_meas):
             s_mat = np.matmul(h_jac_mat[i_tag, :, :],
                               np.matmul(self.__p_mat[0:3, 0:3],
-                                        h_jac_mat[i_tag, :, :].transpose())) + self.__xyz_meas_noise
-            k_mat[i_tag, :, :] = np.dot(self.__p_mat[0:3, 0:3], h_jac_mat[i_tag, :, :].transpose()) * np.linalg.inv(
+                                        np.transpose(h_jac_mat[i_tag, :, :]))) + self.__xyz_meas_noise
+            k_mat[i_tag, :, :] = np.matmul(self.__p_mat[0:3, 0:3], h_jac_mat[i_tag, :, :].transpose()) * np.linalg.inv(
                 s_mat)  # S Dim = 3X3
         # check distance to tag and reject far away tags
         # b_tag_in_range = z_meas <= self.__max_dist_to_tag
         # print("k_mat", k_mat)
         # print("bebfore update x_est:", self.__x_est)
         sum_change_state = np.zeros((3, 1))
-        sum_for_p = np.zeros((3, 3))
+        sum_for_p = (np.eye(3) - np.matmul(k_mat[0, :, :], h_jac_mat[0, :, :]))
         for i in range(num_meas):
             sum_change_state = sum_change_state + np.matmul(k_mat[i, :, :], z_tild[i, :]).reshape((3, 1))  # k * y_tild
-            sum_for_p = sum_for_p + np.matmul(k_mat[i, :, :], h_jac_mat[i, :, :])
+        for i in range(num_meas - 1):
+            sum_for_p = sum_for_p * (np.eye(3) - np.matmul(k_mat[i, :, :], h_jac_mat[i, :, :]))
+        # print("sum_for_p",sum_for_p)
         self.__x_est[0:3] = self.__x_est[0:3] + sum_change_state  # = x_est + sum (k * y_tild)
+        self.__p_mat[0:3, 0:3] = sum_for_p * self.__p_mat[0:3, 0:3]
         # print("after update x_est:", self.__x_est)
         # velocity calculation:
         # innovation y=z-h(x)
@@ -237,11 +240,10 @@ class ExtendedKalmanFilter(object):
         # self.__p_mat[3,3] = np.matmul((np.eye(3)-kalman_gain_v),self.__p_mat[3,3])
         if abs(self.__x_est[3]) > 1:
             self.__x_est[3] = self.__x_est[3] / abs(self.__x_est[3])
-        p_update[0:3, 0:3] = (np.eye(3) - sum_for_p)
+        p_update[0:3, 0:3] = np.eye(3)
         # print((np.eye(3) - sum_for_p))
         p_update[3, 3] = (1 - kalman_gain_v)
         self.__p_mat = np.matmul(p_update, self.__p_mat)
-        print(self.__p_mat)
         # if z_vel > 1:
         # print("vel to high:", z_vel,delta_t)
         #    self.__x_est[3] = 0
