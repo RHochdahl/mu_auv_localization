@@ -43,6 +43,7 @@ class ExtendedKalmanFilter(object):
         self.yaw_current = 0
         self.pitch_current = 0
         self.roll_current = 0
+        self.__counter_not_seen_any_tags = 0
         # initial values and system dynamic (=eye)
         self.__f_mat = np.asarray([[1, 0, 0, 0],
                                    [0, 1, 0, 0],
@@ -141,14 +142,18 @@ class ExtendedKalmanFilter(object):
 
     def update_velocity_if_nothing_is_seen(self):
         self.__x_est[3] = self.__x_est[3] * 1.1
+        self.__counter_not_seen_any_tags = self.__counter_not_seen_any_tags + 1
 
     def prediction(self, x_rot_vel, y_rot_vel, z_rot_vel):
         """ prediction """
         # accel_x=0
+
         delta_t = rospy.get_time() - self.__last_time_stamp_prediction
         self.__last_time_stamp_prediction = rospy.get_time()
         if delta_t == 0:
             delta_t = 0.02
+        #print("current_time:", rospy.get_time())
+        #print("delta_t", delta_t)
         self.yaw_current = self.yaw_current - z_rot_vel * delta_t
         self.pitch_current = self.pitch_current - y_rot_vel * delta_t  # nicht sicher ob das richtig ist
         self.roll_current = self.roll_current + x_rot_vel * delta_t  # nicht sicher ob das richtig ist
@@ -168,18 +173,20 @@ class ExtendedKalmanFilter(object):
         num_meas = z_meas_tags.shape[0]
         # get new measurement
         z_meas = z_meas_tags[:, 0].reshape(num_meas, 1)
-
+        #print("z_meas", np.transpose(z_meas.round(decimals=3)))
         # estimate measurement from x_est
         z_est = self.h(self.__x_est[0:3], z_meas_tags)
         z_tild = z_meas - z_est
-        print(z_tild)
+        #print("z_est", np.transpose(z_est.round(decimals=3)))
+        #print("z_tild", np.transpose(z_tild.round(decimals=3)))
         # calc K-gain
         h_jac_mat = self.h_jacobian(self.__x_est[0:3], z_meas_tags)
-
+        #print("h_jac_mat", h_jac_mat)
         k_mat = np.zeros((3, num_meas))
         r_mat_temp = np.eye(num_meas) * self.__r_mat  # same measurement noise for all measurements, for the moment
 
         s_mat = np.dot(h_jac_mat, np.dot(self.__p_mat[0:3, 0:3], h_jac_mat.transpose())) + r_mat_temp
+        #print("s_mat", s_mat)
         s_diag = np.diag(s_mat)
         # compute k_mat in an interative way
         for i_tag in range(num_meas):
@@ -187,42 +194,35 @@ class ExtendedKalmanFilter(object):
                 i_tag]  # 1/s scalar since s_mat is dim = 1x1
         # check distance to tag and reject far away tags
         b_tag_in_range = z_meas <= self.__max_dist_to_tag
-        # print("bevore estimation")
-        # print(self.__x_est)
-        # print(z_meas)
-        # print(z_est)
-        # self.__x_est = self.__x_est + np.dot(k_mat[:, b_tag_in_range], z_tild[b_tag_in_range,0])  # = x_est + k * y_tild
-        # print(k_mat[:, b_tag_in_range[:, 0]])
-
+        #print("k_mat", k_mat)
+        #print("bebfore update x_est:", self.__x_est)
         self.__x_est[0:3] = self.__x_est[0:3] + np.matmul(k_mat[:, b_tag_in_range[:, 0]],
                                                           z_tild[b_tag_in_range]).reshape(
             (3, 1))  # = x_est + k * y_tild
-        # self.__p_mat[0:3, 0:3] = np.matmul(
-        #    (np.eye(3) - np.matmul(k_mat[:, b_tag_in_range[:, 0]], h_jac_mat[b_tag_in_range[:, 0], :])),
-        #    self.__p_mat[0:3, 0:3])  # = (I-KH)*P
+        #print("after update x_est:", self.__x_est)
         # velocity calculation:
         # innovation y=z-h(x)
 
-        angle_velocity = np.arctan2(self.__x_est[1] - self.__x_est_last_step[1],
-                                    self.__x_est[0] - self.__x_est_last_step[0])
-        # print("arctan2:",angle_velocity)
-        # print("y_est",self.__x_est[1],"y_las_step:",self.__x_est_last_step[1],"x_est:", self.__x_est[0] ,"x_las_step", self.__x_est_last_step[0])
-        # print("current_Yaw", self.yaw_current)
+        #angle_velocity = np.arctan2(self.__x_est[1] - self.__x_est_last_step[1],
+        #                            self.__x_est[0] - self.__x_est_last_step[0])
 
-        scaling = np.cos(
-            np.arctan2(np.sin(angle_velocity - self.yaw_current), np.cos(angle_velocity - self.yaw_current)))
-        if abs(np.arctan2(np.sin(angle_velocity - self.yaw_current),
-                          np.cos(angle_velocity - self.yaw_current))) > np.pi / 2:
-            scaling = 0
+        #scaling = np.cos(
+        #    np.arctan2(np.sin(angle_velocity - self.yaw_current), np.cos(angle_velocity - self.yaw_current)))
+        #if abs(np.arctan2(np.sin(angle_velocity - self.yaw_current),
+        #                  np.cos(angle_velocity - self.yaw_current))) > np.pi / 2:
+        #    scaling = 0
         # print(scaling)
         delta_t = rospy.get_time() - self.__last_time_stamp_update
         if delta_t == 0:
             delta_t = 0.1
-        z_vel = np.linalg.norm(self.__x_est[0:3] - self.__x_est_last_step[0:3]) / delta_t  # * scaling
+        z_vel = np.linalg.norm(self.__x_est[0:3] - self.__x_est_last_step[0:3]) / delta_t / (
+                    self.__counter_not_seen_any_tags + 1)  # * scaling
+        if self.__counter_not_seen_any_tags > 0:
+            self.__counter_not_seen_any_tags = self.__counter_not_seen_any_tags - 1
         if z_vel > 0.7:
             # print("vel to high:", z_vel,delta_t)
-            z_vel = 0.0
-            self.__x_est[3] = 0
+            z_vel = 0.7
+            # self.__x_est[3] = 0
         y_vel = z_vel - self.__x_est[3]
         # gain_vel_covarianz=(1+abs(np.linalg.norm(self.__x_est[0:3] - self.__x_est_last_step[0:3]))*100)
         # print(gain_vel_covarianz)

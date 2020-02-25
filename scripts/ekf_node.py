@@ -73,7 +73,7 @@ def callback_imu(msg, tmp_list):
     mavros_position.pose.orientation.x = estimated_orientation.x
     mavros_position.pose.orientation.y = estimated_orientation.y
     mavros_position.pose.orientation.z = estimated_orientation.z
-    publisher_mavros.publish(mavros_position)  # oublish to boat
+    #publisher_mavros.publish(mavros_position)  # oublish to boat
 
     # publish estimated_pose [m]
     position = PoseStamped()
@@ -87,7 +87,7 @@ def callback_imu(msg, tmp_list):
     position.pose.orientation.x = estimated_orientation.x
     position.pose.orientation.y = estimated_orientation.y
     position.pose.orientation.z = estimated_orientation.z
-    # publisher_position.publish(position)
+    publisher_position.publish(position)
 
     msg_twist = TwistStamped()
     msg_twist.header.stamp = rospy.Time.now()
@@ -112,7 +112,7 @@ def callback_orientation(msg, ekf):
     ekf.current_rotation(yaw_current, pitch_current, roll_current)
 
 
-number_of_unseen_tags = 0
+#number_of_unseen_tags = 0
 
 
 def callback(msg, tmp_list):
@@ -145,17 +145,17 @@ def callback(msg, tmp_list):
             measurements[i, 1:4] = tags[index, 1:4]
         # ekf update step
         ekf.update(measurements)
-        if number_of_unseen_tags > 0 and num_meas > 2:
-            for i in range(number_of_unseen_tags):
-                ekf.update(measurements)
-            number_of_unseen_tags = 0
+        #if number_of_unseen_tags > 0 and num_meas > 2:
+        #    for i in range(number_of_unseen_tags):
+        #        ekf.update(measurements)
+        #    number_of_unseen_tags = 0
 
         yaw_list = np.asarray(orientation_yaw_pitch_roll[:, 0])
         yaw = np.arctan2(np.mean(np.sin(yaw_list)), np.mean(np.cos(yaw_list)))
         pitch = np.mean(orientation_yaw_pitch_roll[:, 1])
         roll = np.mean(orientation_yaw_pitch_roll[:, 2])
     else:
-        number_of_unseen_tags = number_of_unseen_tags + 1
+        #number_of_unseen_tags = number_of_unseen_tags + 1
         ekf.update_velocity_if_nothing_is_seen()
         yaw = old_yaw
     old_yaw = yaw
