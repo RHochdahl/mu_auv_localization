@@ -73,7 +73,7 @@ def callback_imu(msg, tmp_list):
     mavros_position.pose.orientation.x = estimated_orientation.x
     mavros_position.pose.orientation.y = estimated_orientation.y
     mavros_position.pose.orientation.z = estimated_orientation.z
-    #publisher_mavros.publish(mavros_position)  # oublish to boat
+    publisher_mavros.publish(mavros_position)  # oublish to boat
 
     # publish estimated_pose [m]
     position = PoseStamped()

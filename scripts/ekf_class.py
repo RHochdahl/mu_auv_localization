@@ -33,7 +33,7 @@ class ExtendedKalmanFilter(object):
 
         # measurement noise
         # --> see measurement_covariance_model
-        self.__sig_r = 1
+        self.__sig_r = 0.5
         self.__r_mat = self.__sig_r ** 2
         # measurement noise velocity
         self.__sig_v = 0.5
@@ -199,6 +199,13 @@ class ExtendedKalmanFilter(object):
         self.__x_est[0:3] = self.__x_est[0:3] + np.matmul(k_mat[:, b_tag_in_range[:, 0]],
                                                           z_tild[b_tag_in_range]).reshape(
             (3, 1))  # = x_est + k * y_tild
+
+
+        sum_for_p = np.eye(3)- np.matmul(k_mat[:, num_meas-1], h_jac_mat[num_meas-1, :])
+        for i in range(num_meas - 1):
+            sum_for_p = sum_for_p * (np.eye(3)- np.matmul(k_mat[:, i], h_jac_mat[i, :]))
+        self.__p_mat[0:3, 0:3] = sum_for_p * self.__p_mat[0:3, 0:3]
+
         #print("after update x_est:", self.__x_est)
         # velocity calculation:
         # innovation y=z-h(x)
@@ -233,8 +240,9 @@ class ExtendedKalmanFilter(object):
         # self.__p_mat[3,3] = np.matmul((np.eye(3)-kalman_gain_v),self.__p_mat[3,3])
         if abs(self.__x_est[3]) > 1:
             self.__x_est[3] = self.__x_est[3] / abs(self.__x_est[3])
-        p_update[0:3, 0:3] = (np.eye(3) - np.matmul(k_mat[:, b_tag_in_range[:, 0]], h_jac_mat[b_tag_in_range[:, 0], :]))
+        p_update[0:3, 0:3] = np.eye(3)
         p_update[3, 3] = (1 - kalman_gain_v)
+
         self.__p_mat = np.matmul(p_update, self.__p_mat)
         # if z_vel > 1:
         # print("vel to high:", z_vel,delta_t)
