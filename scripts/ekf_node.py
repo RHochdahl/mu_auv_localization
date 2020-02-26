@@ -156,7 +156,7 @@ def callback(msg, tmp_list):
         roll = np.mean(orientation_yaw_pitch_roll[:, 2])
     else:
         #number_of_unseen_tags = number_of_unseen_tags + 1
-        #ekf.update_velocity_if_nothing_is_seen()
+        ekf.update_velocity_if_nothing_is_seen()
         yaw = old_yaw
     old_yaw = yaw
     # print "reale messungen: " + str(measurements)
