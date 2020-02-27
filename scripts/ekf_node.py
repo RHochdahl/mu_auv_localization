@@ -73,7 +73,7 @@ def callback_imu(msg, tmp_list):
     mavros_position.pose.orientation.x = estimated_orientation.x
     mavros_position.pose.orientation.y = estimated_orientation.y
     mavros_position.pose.orientation.z = estimated_orientation.z
-    publisher_mavros.publish(mavros_position)  # oublish to boat
+    #publisher_mavros.publish(mavros_position)  # oublish to boat
 
     # publish estimated_pose [m]
     position = PoseStamped()
@@ -87,7 +87,7 @@ def callback_imu(msg, tmp_list):
     position.pose.orientation.x = estimated_orientation.x
     position.pose.orientation.y = estimated_orientation.y
     position.pose.orientation.z = estimated_orientation.z
-    #publisher_position.publish(position)
+    publisher_position.publish(position)
 
     msg_twist = TwistStamped()
     msg_twist.header.stamp = rospy.Time.now()
