@@ -126,7 +126,7 @@ def callback_tag_detection(msg, tmp_list):
     orientation_yaw_pitch_roll = np.zeros((num_meas, 3))
 
     # if new measurement: update particles
-    if num_meas >= 3:
+    if num_meas >= 1:
         measurements = np.zeros((num_meas, 1 + state_dim))
         for i, tag in enumerate(msg.detections):
             tag_id = int(tag.id[0])
