@@ -73,7 +73,7 @@ def callback_imu(msg, tmp_list):
     mavros_position.pose.orientation.x = estimated_orientation.x
     mavros_position.pose.orientation.y = estimated_orientation.y
     mavros_position.pose.orientation.z = estimated_orientation.z
-    #publisher_mavros.publish(mavros_position)  # oublish to boat
+    publisher_mavros.publish(mavros_position)  # oublish to boat
 
     # publish estimated_pose [m]
     position = PoseStamped()
@@ -87,7 +87,7 @@ def callback_imu(msg, tmp_list):
     position.pose.orientation.x = estimated_orientation.x
     position.pose.orientation.y = estimated_orientation.y
     position.pose.orientation.z = estimated_orientation.z
-    publisher_position.publish(position)
+    # publisher_position.publish(position)
 
     msg_twist = TwistStamped()
     msg_twist.header.stamp = rospy.Time.now()
@@ -115,7 +115,7 @@ def callback_orientation(msg, ekf):
 #number_of_unseen_tags = 0
 
 
-def callback(msg, tmp_list):
+def callback_tag_detection(msg, tmp_list):
     """"""
     global old_yaw, number_of_unseen_tags
     [ekf, publisher_position, publisher_mavros, broadcaster,
@@ -126,7 +126,7 @@ def callback(msg, tmp_list):
     orientation_yaw_pitch_roll = np.zeros((num_meas, 3))
 
     # if new measurement: update particles
-    if num_meas >= 1:
+    if num_meas >= 3:
         measurements = np.zeros((num_meas, 1 + state_dim))
         for i, tag in enumerate(msg.detections):
             tag_id = int(tag.id[0])
@@ -156,12 +156,14 @@ def callback(msg, tmp_list):
         roll = np.mean(orientation_yaw_pitch_roll[:, 2])
     else:
         #number_of_unseen_tags = number_of_unseen_tags + 1
-        ekf.update_velocity_if_nothing_is_seen()
+        #ekf.update_velocity_if_nothing_is_seen()
+        #print("[EKF node] update_velocity_if_nothing_is_seen")
+
         yaw = old_yaw
     old_yaw = yaw
     # print "reale messungen: " + str(measurements)
     print("Angle yaw: " + str(np.round(yaw * 180 / np.pi, decimals=2)) + ", x_est = " + str(
-        ekf.get_x_est().transpose()))
+        ekf.get_x_est().transpose()) + " P_mat = " + str(np.sqrt(np.diag(ekf.get_p_mat()))))
     estimated_orientation = ekf.yaw_pitch_roll_to_quat(-(old_yaw - np.pi / 2), 0, 0)
     estimated_position = ekf.get_x_est()
 
@@ -194,7 +196,7 @@ def main():
     publisher_marker = rospy.Publisher('Sphere', MarkerArray, queue_size=1)
     broadcaster = tf.TransformBroadcaster()
 
-    rospy.Subscriber("/tag_detections", AprilTagDetectionArray, callback,
+    rospy.Subscriber("/tag_detections", AprilTagDetectionArray, callback_tag_detection,
                      [ekf, publisher_position, publisher_mavros, broadcaster,
                       publisher_marker, publisher_twist], queue_size=1)
     rospy.Subscriber("/mavros/imu/data", Imu, callback_imu,
