@@ -48,7 +48,7 @@ class ExtendedKalmanFilter(object):
         self.__f_mat = np.asarray([[1, 0, 0, 0],
                                    [0, 1, 0, 0],
                                    [0, 0, 1, 0],
-                                   [0, 0, 0, 0.99]])
+                                   [0, 0, 0, 0.98]])
 
     def yaw_pitch_roll_to_quat(self, yaw, pitch, roll):
         cy = np.cos(yaw * 0.5)
@@ -141,7 +141,7 @@ class ExtendedKalmanFilter(object):
         self.roll_current = roll_current
 
     def update_velocity_if_nothing_is_seen(self):
-        self.__x_est[3] = self.__x_est[3] * 1.1
+        self.__x_est[3] = self.__x_est[3] * 1.2
         self.__counter_not_seen_any_tags = self.__counter_not_seen_any_tags + 1
 
     def prediction(self, x_rot_vel, y_rot_vel, z_rot_vel):
