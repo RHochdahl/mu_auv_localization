@@ -95,13 +95,13 @@ def callback_imu(msg, tmp_list):
     publisher_position.publish(position)
 
 
-    msg_twist=TwistStamped()
-    msg_twist.header.stamp = rospy.Time.now()
-    msg_twist.header.frame_id = "global_tank"  # ned
-    msg_twist.twist.linear.x = estimated_position[3]
-    msg_twist.twist.linear.y = estimated_position[4]
-    msg_twist.twist.linear.z = estimated_position[5]
-    publisher_twist.publish(msg_twist)
+    #msg_twist=TwistStamped()
+    #msg_twist.header.stamp = rospy.Time.now()
+    #msg_twist.header.frame_id = "global_tank"  # ned
+    #msg_twist.twist.linear.x = estimated_position[3]
+    #msg_twist.twist.linear.y = estimated_position[4]
+    #msg_twist.twist.linear.z = estimated_position[5]
+    #publisher_twist.publish(msg_twist)
 
 
 def callback_orientation(msg):
