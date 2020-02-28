@@ -159,7 +159,9 @@ def callback(msg, tmp_list):
         pitch = np.mean(orientation_yaw_pitch_roll[:, 1])
         roll = np.mean(orientation_yaw_pitch_roll[:, 2])
     else:
-        ekf.update(np.zeros((num_meas, 1 + state_dim)))
+        #number_of_unseen_tags = number_of_unseen_tags + 1
+        ekf.update_velocity_if_nothing_is_seen()
+        #print("[EKF node] update_velocity_if_nothing_is_seen")
         yaw = old_yaw
     old_yaw = yaw
     # print "reale messungen: " + str(measurements)
