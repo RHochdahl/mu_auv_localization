@@ -22,8 +22,8 @@ class ExtendedKalmanFilter(object):
                                            self.__sig_x4 ** 2]))
         self.__p_mat = self.__p_mat_0
         # process noise
-        self.__sig_w1 = 0.04
-        self.__sig_w2 = 0.04
+        self.__sig_w1 = 0.1
+        self.__sig_w2 = 0.1
         self.__sig_w3 = 0.03
         self.__sig_w4 = 0.05
         self.__q_mat = np.array(np.diag([self.__sig_w1 ** 2,
@@ -48,7 +48,7 @@ class ExtendedKalmanFilter(object):
         self.__f_mat = np.asarray([[1, 0, 0, 0],
                                    [0, 1, 0, 0],
                                    [0, 0, 1, 0],
-                                   [0, 0, 0, 1]])
+                                   [0, 0, 0, 0.99]])
 
     def yaw_pitch_roll_to_quat(self, yaw, pitch, roll):
         cy = np.cos(yaw * 0.5)
