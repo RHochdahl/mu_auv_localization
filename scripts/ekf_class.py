@@ -73,7 +73,11 @@ class ExtendedKalmanFilter(object):
         self.__p_mat = self.__p_mat_0
 
     def get_x_est(self):
-        return self.__x_est.round(decimals=3)
+        tmp=np.copy(self.__x_est)
+        tmp[0]=(self.__x_est[2]*0.04+1)*tmp[0]-0.05
+        tmp[1]=tmp[1]
+        tmp[2]=tmp[2]
+        return tmp.round(decimals=3)
 
     def get_p_mat(self):
         return self.__p_mat
@@ -217,6 +221,7 @@ class ExtendedKalmanFilter(object):
             delta_t = 0.1
         z_vel = np.linalg.norm(self.__x_est[0:3] - self.__x_est_last_step[0:3]) / delta_t / (
                     self.__counter_not_seen_any_tags + 1)  # * scaling
+        z_vel=0#TODO FOR REAL TEST REMOVE
         if self.__counter_not_seen_any_tags > 0:
             self.__counter_not_seen_any_tags = self.__counter_not_seen_any_tags - 1
         if z_vel > 0.7:

@@ -48,6 +48,7 @@ def callback_gantry(msg):
     global array_tags, mean_array, number_of_tags
     currently_seen = array_tags[np.where(array_tags[:, 5] == 1), :]
     qz_90n = Quaternion(axis=[0, 0, 1], angle=np.pi / 2)
+    #print(array_tags)
     for i in range(currently_seen[0].shape[0]):
         #print(currently_seen[0, i, 1:4])
         currently_seen[0, i, 1:4] = qz_90n.rotate(currently_seen[0, i, 1:4])

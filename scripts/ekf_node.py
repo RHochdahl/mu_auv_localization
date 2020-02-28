@@ -29,7 +29,8 @@ old_yaw = 0
 
 rospack = rospkg.RosPack()
 # data_path = rospack.get_path("mu_auv_localization") + '/scripts/calibration_ground_truth_gazebo.csv'  # in gazebo
-data_path = rospack.get_path("mu_auv_localization") + '/scripts/calibration_tank.csv'  # in real tank
+#data_path = rospack.get_path("mu_auv_localization") + '/scripts/calibration_tank.csv'  # in real tank
+data_path = rospack.get_path("mu_auv_localization") + '/scripts/calibration.csv'  # in real tank
 tags = genfromtxt(data_path, delimiter=',')  # home PC
 
 tags = tags[:, 0:4]
@@ -73,7 +74,7 @@ def callback_imu(msg, tmp_list):
     mavros_position.pose.orientation.x = estimated_orientation.x
     mavros_position.pose.orientation.y = estimated_orientation.y
     mavros_position.pose.orientation.z = estimated_orientation.z
-    #publisher_mavros.publish(mavros_position)  # oublish to boat
+    publisher_mavros.publish(mavros_position)  # oublish to boat
 
     # publish estimated_pose [m]
     position = PoseStamped()
@@ -87,7 +88,7 @@ def callback_imu(msg, tmp_list):
     position.pose.orientation.x = estimated_orientation.x
     position.pose.orientation.y = estimated_orientation.y
     position.pose.orientation.z = estimated_orientation.z
-    publisher_position.publish(position)
+    #publisher_position.publish(position)
 
     msg_twist = TwistStamped()
     msg_twist.header.stamp = rospy.Time.now()
