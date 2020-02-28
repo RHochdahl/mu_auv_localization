@@ -141,7 +141,7 @@ class ExtendedKalmanFilter(object):
         self.roll_current = roll_current
 
     def update_velocity_if_nothing_is_seen(self):
-        self.__x_est[3] = self.__x_est[3] * 1.1
+        self.__x_est[3] = self.__x_est[3] * 1.2
         self.__counter_not_seen_any_tags = self.__counter_not_seen_any_tags + 1
 
     def prediction(self, x_rot_vel, y_rot_vel, z_rot_vel):
