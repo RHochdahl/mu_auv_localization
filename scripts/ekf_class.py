@@ -22,9 +22,9 @@ class ExtendedKalmanFilter(object):
                                            self.__sig_x4 ** 2]))
         self.__p_mat = self.__p_mat_0
         # process noise
-        self.__sig_w1 = 0.05
-        self.__sig_w2 = 0.05
-        self.__sig_w3 = 0.05
+        self.__sig_w1 = 0.1
+        self.__sig_w2 = 0.1
+        self.__sig_w3 = 0.03
         self.__sig_w4 = 0.05
         self.__q_mat = np.array(np.diag([self.__sig_w1 ** 2,
                                          self.__sig_w2 ** 2,
@@ -36,8 +36,8 @@ class ExtendedKalmanFilter(object):
         self.__sig_r = 1
         self.__r_mat = self.__sig_r ** 2
         # measurement noise velocity
-        self.__sig_v = 0.5
-        self.__v_mat = np.array(np.diag([self.__sig_v ** 2]))
+        self.__sig_v = 0.2
+        self.__rv_mat = np.array(np.diag([self.__sig_v ** 2]))
 
         self.__max_dist_to_tag = 3
         self.yaw_current = 0
@@ -148,21 +148,32 @@ class ExtendedKalmanFilter(object):
         """ prediction """
         # accel_x=0
 
-        delta_t = rospy.get_time() - self.__last_time_stamp_prediction
+        delta_t_prediction = rospy.get_time() - self.__last_time_stamp_prediction
         self.__last_time_stamp_prediction = rospy.get_time()
-        if delta_t == 0:
-            delta_t = 0.02
+        if delta_t_prediction == 0:
+            """ if delta_t_prediction - do nothing since prediction has been done for this time step"""
+            pass
+            # print("[EKF prediction] reset delta_t_prediction = 0.02s")
+            # delta_t_prediction = 0.02
+            # print("[EKF prediction] reset delta_t_prediction = 0.00s")
+        # else:
+            # print("[EKF prediction] delta_t = " + str(delta_t))
+
+
         #print("current_time:", rospy.get_time())
         #print("delta_t", delta_t)
-        self.yaw_current = self.yaw_current - z_rot_vel * delta_t
-        self.pitch_current = self.pitch_current - y_rot_vel * delta_t  # nicht sicher ob das richtig ist
-        self.roll_current = self.roll_current + x_rot_vel * delta_t  # nicht sicher ob das richtig ist
+        self.yaw_current = self.yaw_current - z_rot_vel * delta_t_prediction
+        self.pitch_current = self.pitch_current - y_rot_vel * delta_t_prediction  # nicht sicher ob das richtig ist
+        self.roll_current = self.roll_current + x_rot_vel * delta_t_prediction  # nicht sicher ob das richtig ist
         rotation = self.yaw_pitch_roll_to_quat(self.yaw_current, self.pitch_current, self.roll_current)
+        """ velocity update """
         update_x_y_z = rotation.rotate(
-            np.asarray([[self.__x_est[3] * delta_t], [0], [0]]))  # yaw_pitch_roll_to_quat
+            np.asarray([[self.__x_est[3] * delta_t_prediction], [0], [0]]))  # yaw_pitch_roll_to_quat
         # update_x_y_z = rotation.rotate(np.asarray([[0], [0], [0]]))
         update_x_y_z_v = np.asarray([[update_x_y_z[0]], [update_x_y_z[1]], [update_x_y_z[2]], [0]])
         # print(update_x_y_z_v)
+
+        """ prediction """
         self.__x_est = np.matmul(self.__f_mat, self.__x_est) + update_x_y_z_v  # prediction = f * x_est + u
         self.__p_mat = np.matmul(self.__f_mat, np.matmul(self.__p_mat, np.transpose(self.__f_mat))) + self.__q_mat
         # print(self.__p_mat)
@@ -171,13 +182,15 @@ class ExtendedKalmanFilter(object):
     def update(self, z_meas_tags):
         """ innovation """
         num_meas = z_meas_tags.shape[0]
+        x_est_apriori = np.copy(self.__x_est)
+
         # get new measurement
         z_meas = z_meas_tags[:, 0].reshape(num_meas, 1)
-        #print("z_meas", np.transpose(z_meas.round(decimals=3)))
+        # print("z_meas ", np.transpose(z_meas.round(decimals=3)))
         # estimate measurement from x_est
         z_est = self.h(self.__x_est[0:3], z_meas_tags)
         z_tild = z_meas - z_est
-        #print("z_est", np.transpose(z_est.round(decimals=3)))
+        # print("z_est", np.transpose(z_est.round(decimals=3)))
         #print("z_tild", np.transpose(z_tild.round(decimals=3)))
         # calc K-gain
         h_jac_mat = self.h_jacobian(self.__x_est[0:3], z_meas_tags)
@@ -196,9 +209,10 @@ class ExtendedKalmanFilter(object):
         b_tag_in_range = z_meas <= self.__max_dist_to_tag
         #print("k_mat", k_mat)
         #print("bebfore update x_est:", self.__x_est)
+        dx = np.matmul(k_mat[:, b_tag_in_range[:, 0]], z_tild[b_tag_in_range]).reshape((3, 1))  # = x_est + k * y_tild
+
         self.__x_est[0:3] = self.__x_est[0:3] + np.matmul(k_mat[:, b_tag_in_range[:, 0]],
-                                                          z_tild[b_tag_in_range]).reshape(
-            (3, 1))  # = x_est + k * y_tild
+                                                          z_tild[b_tag_in_range]).reshape((3, 1))  # = x_est + k * y_tild
         #print("after update x_est:", self.__x_est)
         # velocity calculation:
         # innovation y=z-h(x)
@@ -212,16 +226,57 @@ class ExtendedKalmanFilter(object):
         #                  np.cos(angle_velocity - self.yaw_current))) > np.pi / 2:
         #    scaling = 0
         # print(scaling)
-        delta_t = rospy.get_time() - self.__last_time_stamp_update
-        if delta_t == 0:
-            delta_t = 0.1
-        z_vel = np.linalg.norm(self.__x_est[0:3] - self.__x_est_last_step[0:3]) / delta_t / (
-                    self.__counter_not_seen_any_tags + 1)  # * scaling
+
+        """ update velocity """
+        delta_t_update = rospy.get_time() - self.__last_time_stamp_update
+        if delta_t_update == 0:
+            #delta_t_update = 0.1
+            print("[EKF update] ERROR delta_t_update = 0.0s")
+
+        x_est_post = self.__x_est  # after innovation
+
+        # v_est = np.linalg.norm(x_est_apriori[0:3] - self.__x_est_last_step[0:3]) / delta_t_update
+        v_est = x_est_apriori[3]
+        xb_world = np.array([np.cos(self.yaw_current),
+                             np.sin(self.yaw_current),
+                             0])
+        v_meas = np.linalg.norm(np.dot(xb_world,(x_est_post[0:3] - self.__x_est_last_step[0:3]))) / delta_t_update
+        if v_meas > 0.4:
+            # print("vel to high:", z_vel,delta_t)
+            v_meas = 0.4
+
+        s_k_mat = self.__p_mat[3, 3] + self.__rv_mat
+        kalman_gain_v = self.__p_mat[3, 3] / s_k_mat
+        dv = kalman_gain_v * (v_meas-v_est)
+        self.__x_est[3] = self.__x_est[3] + dv
+
+        p_update = np.zeros((4, 4))
+        p_update[0:3, 0:3] = (np.eye(3) - np.matmul(k_mat[:, b_tag_in_range[:, 0]], h_jac_mat[b_tag_in_range[:, 0], :]))
+        p_update[3, 3] = (1 - kalman_gain_v)
+        self.__p_mat = np.matmul(p_update, self.__p_mat)
+        # print("v_new= " + str(round(self.__x_est[3], 3)) +
+        #      " v_est= " + str(round(v_est, 3)) +
+        #      " v_meas=" + str(round(v_meas, 3)) +
+        #      " k_v=" + str(round(kalman_gain_v,4)) +
+        #      " dt=" + str(round(delta_t_update,3)) +
+        #      " dv=" + str(dv))
+        print("[EKF update] dx = " + str(dx.T) + " dv= " + str(dv))
+        if self.__x_est[3] > 0.4:
+            # print("vel to high:", z_vel,delta_t)
+            self.__x_est[3] = 0.4
+        elif self.__x_est[3] < 0.0:
+            self.__x_est[3] = 0
+        """
+        # dx_norm = np.linalg.norm(self.__x_est[0:3] - self.__x_est_last_step[0:3])
+        z_vel = z_vel + dx_norm / delta_t_update
+        
+        # z_vel = z_vel / (self.__counter_not_seen_any_tags + 1)  # * scaling
+
         if self.__counter_not_seen_any_tags > 0:
             self.__counter_not_seen_any_tags = self.__counter_not_seen_any_tags - 1
-        if z_vel > 0.7:
+        if z_vel > 0.4:
             # print("vel to high:", z_vel,delta_t)
-            z_vel = 0.7
+            z_vel = 0.4
             # self.__x_est[3] = 0
         y_vel = z_vel - self.__x_est[3]
         # gain_vel_covarianz=(1+abs(np.linalg.norm(self.__x_est[0:3] - self.__x_est_last_step[0:3]))*100)
@@ -241,24 +296,43 @@ class ExtendedKalmanFilter(object):
         #    self.__x_est[3] = 0
         # print("after estimation")
         # print(self.__x_est)
-        # save last state
+        """
+
+        """ save last state """
         self.__x_est_last_step = np.copy(self.__x_est)
         self.__last_time_stamp_update = rospy.get_time()
 
         if self.__x_est[0] > 5 or np.isnan(self.__x_est[0]) or self.__x_est[0] < -1:
-            self.__x_est[0] = 1.5
+            x0_reset = 1.5
+            print("reset x0 from " + str(self.__x_est[0]) +  " to x0= " + str(x0_reset))
+            self.__x_est[0] = x0_reset
             self.__x_est_last_step[0] = self.__x_est[0]
             self.__p_mat[0] = self.__p_mat_0[0]
+
         if self.__x_est[1] > 3 or np.isnan(self.__x_est[1]) or self.__x_est[1] < -1:
+            x1_reset = 1
+            print("reset x1 from " + str(self.__x_est[1]) + " to x1= " + str(x1_reset))
             self.__x_est[1] = 1
             self.__x_est_last_step[1] = self.__x_est[1]
             self.__p_mat[1] = self.__p_mat_0[1]
 
         if self.__x_est[2] > 1.5 or np.isnan(self.__x_est[2]) or self.__x_est[2] < -0.2:
+            x2_reset = 0.5
+            print("reset x2 from " + str(self.__x_est[2]) + " to x2= " + str(x2_reset))
             self.__x_est[2] = 0.5
             self.__x_est_last_step[2] = self.__x_est[2]
             self.__p_mat[2] = self.__p_mat_0[2]
         if self.__x_est[3] > 1:
             self.__x_est[3] = 1
 
+        """ may reset full p_mat instead of single elements? """
+        if np.isnan(self.__p_mat[0,0]):
+            self.__p_mat[0,0] = self.__p_mat_0[0,0]
+            print("[EKF update] reset nan p_matx0 to p_mat_0")
+        if np.isnan(self.__p_mat[1,1]):
+            self.__p_mat[1,1] = self.__p_mat_0[1,1]
+            print("[EKF update] reset nan p_matx1 to p_mat_0")
+        if np.isnan(self.__p_mat[2,2]):
+            self.__p_mat[2,2] = self.__p_mat_0[2,2]
+            print("[EKF update] reset nan p_matx2 to p_mat_0")
         return True
