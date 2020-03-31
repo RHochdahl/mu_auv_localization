@@ -36,6 +36,7 @@
   </node>
             <!-- Localisation -->
   <node pkg="mu_auv_localization" type="ekf_node.py" name="ekf_node" clear_params="true" output="screen" launch-prefix="$(arg launch_prefix)" >
+    <param name="calibration" type="str" value="water_tank" /> <!-- either gazebo or water_tank -->
   </node>
               <!-- ENU_to_NED -->
 <node pkg="hippocampus_tools_ros" type="mavros_local_pos_ENU_to_NED.py" name="enu_to_ned_tank_coordinate_system" clear_params="true" output="screen" launch-prefix="$(arg launch_prefix)" >

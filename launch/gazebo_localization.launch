@@ -5,7 +5,7 @@
   <arg name="camera_frame" default="camera" />
   <arg name="image_topic" default="image_rect" />
 
-  <!-- Set parameters -->
+  <!-- Set parameters test-->
   <rosparam command="load" file="$(find apriltag_ros)/config/settings.yaml" ns="$(arg node_namespace)" />
   <rosparam command="load" file="$(find apriltag_ros)/config/tags.yaml" ns="$(arg node_namespace)" />
           <!-- camera node -->
@@ -23,6 +23,7 @@
   </node>
 <!-- Start EKF Localization -->
   <node pkg="mu_auv_localization" type="ekf_node.py" name="ekf_node" clear_params="true" output="screen" launch-prefix="$(arg launch_prefix)" >
+    <param name="calibration" type="str" value="gazebo" /> <!-- either gazebo or water_tank -->
   </node>
 
 </launch>
