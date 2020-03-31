@@ -180,7 +180,11 @@ def callback(msg, tmp_list):
 def main():
     global tags
     rospy.init_node('ekf_node')
-    which_calibration=rospy.get_param('~calibration')
+    try:
+        which_calibration=rospy.get_param('~calibration')
+    except KeyError:
+        print("################## You have to set a calibration parameter ###########################")
+        exit(-1)
     if which_calibration == "gazebo":
         print("using gazebo calibration")
         data_path=rospack.get_path("mu_auv_localization") + '/scripts/calibration_ground_truth_gazebo.csv'  # in gazebo
