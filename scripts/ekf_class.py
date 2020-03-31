@@ -221,7 +221,7 @@ class ExtendedKalmanFilter(object):
             delta_t = 0.1
         z_vel = np.linalg.norm(self.__x_est[0:3] - self.__x_est_last_step[0:3]) / delta_t / (
                 self.__counter_not_seen_any_tags + 1)  # * scaling
-        #z_vel = 0
+        z_vel = 0  # TODO FOR REAL TEST REMOVE
         if self.__counter_not_seen_any_tags > 0:
             self.__counter_not_seen_any_tags = self.__counter_not_seen_any_tags - 1
         if z_vel > 0.7:
