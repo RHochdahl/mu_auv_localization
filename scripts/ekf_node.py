@@ -28,14 +28,7 @@ old_yaw = 0
 # res = set_mode_srv(0, " OFFBOARD")
 
 rospack = rospkg.RosPack()
-# data_path = rospack.get_path("mu_auv_localization") + '/scripts/calibration_ground_truth_gazebo.csv'  # in gazebo
-#data_path = rospack.get_path("mu_auv_localization") + '/scripts/calibration_tank.csv'  # in real tank
-data_path = rospack.get_path("mu_auv_localization") + '/scripts/calibration.csv'  # in real tank
-tags = genfromtxt(data_path, delimiter=',')  # home PC
-
-tags = tags[:, 0:4]
-print(tags)
-tags[:, 3] += 0.0
+tags = None
 # tags[:, 1] += 0.08  # to shift x-value according to gantry origin
 # tags[:,2] += 0.02  # to shift y-value according to gantry origin
 # print(tags)
@@ -122,6 +115,7 @@ def callback(msg, tmp_list):
     [ekf, publisher_position, publisher_mavros, broadcaster,
      publisher_marker, publisher_twist] = tmp_list
 
+
     # get length of message
     num_meas = len(msg.detections)
     orientation_yaw_pitch_roll = np.zeros((num_meas, 3))
@@ -184,7 +178,23 @@ def callback(msg, tmp_list):
 
 
 def main():
+    global tags
     rospy.init_node('ekf_node')
+    which_calibration=rospy.get_param('~calibration')
+    if which_calibration == "gazebo":
+        print("using gazebo calibration")
+        data_path=rospack.get_path("mu_auv_localization") + '/scripts/calibration_ground_truth_gazebo.csv'  # in gazebo
+    else:
+        if which_calibration == "water_tank":
+            print("using real calibration")
+            data_path = rospack.get_path("mu_auv_localization") + '/scripts/calibration_tank.csv'  # in real tank
+        else:
+            print("could not find correct parameter for calibration ")
+            exit(-1)
+    tags = genfromtxt(data_path, delimiter=',')  # home PC
+    tags = tags[:, 0:4]
+    tags[:, 3] += 0.0
+
 
     ekf = ekf_class.ExtendedKalmanFilter()
 
