@@ -19,8 +19,6 @@
     <rosparam command="load" file="$(find mu_auv_localization)/config/camera_pose.yaml" />
   </node>
 
-  <node pkg="hippocampus_common" type="tf_pose_to_ned_node" name="tf_pose_to_ned_node" />
-
   <!-- Start EKF Localization -->
   <node pkg="mu_auv_localization" type="ekf_node" name="ekf_node" clear_params="true" output="screen">
     <param name="calibration" type="str" value="gazebo" />
