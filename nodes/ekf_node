@@ -247,7 +247,7 @@ def main():
                          publisher_marker, publisher_twist
                      ],
                      queue_size=1)
-    rospy.Subscriber("pose_ned",
+    rospy.Subscriber("pose_px4",
                      PoseStamped,
                      callback_orientation,
                      ekf,
