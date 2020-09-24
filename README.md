@@ -8,10 +8,10 @@ If you use this code, please drop a message to daniel.duecker@tuhh.de and cite:
 
 ```
 @inproceedings{Duecker2020,
-  title = {An Integrated Approach to Navigation and Control in Micro Underwater Robotics using Radio-Frequency Localization},  
-  author = {Duecker, Daniel A and Johannink, Tobias and Kreuzer, Edwin and Rausch, Viktor and Solowjow, Eugen},  
-  year  = {2019},
-  month = {may},
+  title = {Towards Micro Robot Hydrobatics: Vision-based Guidance, Navigation, and Control for Agile Underwater Vehicles},  
+  author = {Duecker, Daniel A and Bauschmann, Nathalie and Hansen, Tim and Kreuzer, Edwin and Seifried, Robert},  
+  year  = {2020},
+  month = {October},
   publisher = {{IEEE/RSJ}},
   booktitle = {(accepted at) 2020 International Conference on Intelligent Robots and Systems (IROS)}
 }
