@@ -4,7 +4,7 @@ A video which demonstrates the performance of the microAUV localization system c
 https://youtu.be/qT9MzZRaZfI
 
 Feel free to use our code for your own work.
-If you use this code, please drop a message to daniel.duecker@tuhh.de to maintain a research in rf-localization using software defined radio and cite:
+If you use this code, please drop a message to daniel.duecker@tuhh.de and cite:
 
 ```
 @inproceedings{Duecker2020,
