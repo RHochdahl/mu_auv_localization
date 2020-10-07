@@ -129,7 +129,6 @@ def callback(msg, tmp_list):
     num_meas = len(msg.detections)
     orientation_yaw_pitch_roll = np.zeros((num_meas, 3))
 
-    # if new measurement: update particles
     if num_meas >= 1:
         measurements = np.zeros((num_meas, 1 + state_dim))
         for i, tag in enumerate(msg.detections):

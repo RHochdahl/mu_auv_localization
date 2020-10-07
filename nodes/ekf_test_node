@@ -29,34 +29,22 @@ class EKFNode(Node):
 
         self.lock = threading.Lock()
         self.t_last_prediction = rospy.get_time()
-        # self.tf_buffer = tf2_ros.Buffer()
-        # self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
-        # self.tf_buffer.lookup_transform(target_frame="map_ned",
-        #                                 source_frame="map",
-        #                                 time=rospy.Time(0),
-        #                                 timeout=rospy.Duration(10))
 
-        if meas_model_type == "dist":
-            if process_model_type == "standard":
-                dim_state, dim_meas, W, V, P0, x0 = self._load_ekf_params_dist()
+        if meas_model_type == "dist" and process_model_type == "standard":
+            dim_state, dim_meas, w_mat, v_mat, p0_mat, x0, c_penalty_dist, c_penalty_yaw = self._load_ekf_params_dist()
 
-                process_model = ProcessModel(dim_state, dim_meas, V)
-                measurement_model = MeasurementModelDistances(dim_state, dim_meas, W)
-                self.ekf = ExtendedKalmanFilter(dim_state, dim_meas, measurement_model, process_model, x0, P0)
+            process_model = ProcessModel(dim_state, dim_meas, v_mat)
+            measurement_model = MeasurementModelDistances(dim_state, dim_meas, w_mat, c_penalty_dist, c_penalty_yaw)
+            self.ekf = ExtendedKalmanFilter(dim_state, dim_meas, measurement_model, process_model, x0, p0_mat)
         else:
             rospy.logerr("[{}] Choose valid measurement model.".format(rospy.get_name()))
             exit(-1)
 
-        self.vision_pose_pub = rospy.Publisher("mavros/vision_pose/pose",
-                                               PoseStamped,
+        self.vision_pose_pub = rospy.Publisher("mavros/vision_pose/pose", PoseStamped,
                                                queue_size=1)
 
-        self.estimated_pose_pub = rospy.Publisher('estimated_pose',
-                                                  PoseStamped,
-                                                  queue_size=1)
-        self.twist_pub = rospy.Publisher('estimated_twist',
-                                         TwistStamped,
-                                         queue_size=1)
+        self.estimated_pose_pub = rospy.Publisher('estimated_pose', PoseStamped, queue_size=1)
+        self.twist_pub = rospy.Publisher('estimated_twist', TwistStamped, queue_size=1)
 
         rospy.Subscriber("pose_px4",
                          PoseStamped,
@@ -83,7 +71,7 @@ class EKFNode(Node):
                 # measurement for each tag consists of distance and yaw angle
                 # -> dim_meas = 2
                 measurements = np.zeros((num_tags * self.ekf.dim_meas, 1))
-                detected_tags = np.zeros((num_tags, tags.shape[1]))
+                detected_tags = np.zeros((num_tags, 4))
 
                 for i, tag in enumerate(tag_array_msg.detections):
 
@@ -91,7 +79,7 @@ class EKFNode(Node):
 
                     # add this tag's information to list of detected tags
                     index = np.where(tags[:, 0] == tag_id)
-                    detected_tags[i, 1:4] = tags[index, 1:4]
+                    detected_tags[i, :] = tags[index, :]
 
                     # TODO "calibration"
                     if cam_reversed:
@@ -133,7 +121,7 @@ class EKFNode(Node):
                 # measurement for each tag consists of full pose measurement camera-tag
                 # -> dim_meas = 7
                 measurements = np.zeros((num_tags * self.ekf.dim_meas, 1))
-                detected_tags = np.zeros((num_tags, tags.shape[1]))
+                detected_tags = np.zeros((num_tags, 4))
 
                 for i, tag in enumerate(tag_array_msg.detections):
 
@@ -141,7 +129,7 @@ class EKFNode(Node):
 
                     # add this tag's information to list of detected tags
                     index = np.where(tags[:, 0] == tag_id)
-                    detected_tags[i, 1:4] = tags[index, 1:4]
+                    detected_tags[i, :] = tags[index, :]
 
                     # TODO check "calibration", rewrite this
                     if cam_reversed:
@@ -187,22 +175,26 @@ class EKFNode(Node):
 
     def px4_callback(self, pose_msg):
 
+        measurements = 0
+
         with self.lock:
             now = rospy.get_time()
             self.ekf.predict(now - self.t_last_prediction)
             self.t_last_prediction = now
-            self.ekf.update_orientation()
+            self.ekf.update_orientation(measurements)
 
     def imu_callback(self, imu_msg):
 
+        measurements = 0
+
         with self.lock:
             now = rospy.get_time()
             self.ekf.predict(now - self.t_last_prediction)
             self.t_last_prediction = now
-            self.ekf.update_angular_vel()
+            self.ekf.update_angular_vel(measurements)
 
     def _publish_pose_estimation(self):
-        estimation = self.ekf._x_est
+        estimation = self.ekf.get_x_est()
         position = estimation[:3]
         orientation = estimation[3:7]
         pose = PoseStamped()
@@ -253,7 +245,7 @@ class EKFNode(Node):
             sig_dpitch = rospy.get_param('ekf/p_mat/sig_dpitch')
             sig_dyaw = rospy.get_param('ekf/p_mat/sig_dyaw')
 
-            P0 = np.array(np.diag([sig_x ** 2, sig_y ** 2, sig_z ** 2, sig_roll ** 2, sig_pitch ** 2, sig_yaw ** 2,
+            p0_mat = np.array(np.diag([sig_x ** 2, sig_y ** 2, sig_z ** 2, sig_roll ** 2, sig_pitch ** 2, sig_yaw ** 2,
                                    sig_dx ** 2, sig_dy ** 2, sig_dz ** 2, sig_droll ** 2, sig_dpitch ** 2, sig_dyaw ** 2]))
 
             # process noise
@@ -270,14 +262,17 @@ class EKFNode(Node):
             sig_v_dpitch = rospy.get_param('ekf/v_mat/sig_v_dpitch')
             sig_v_dyaw = rospy.get_param('ekf/v_mat/sig_v_dyaw')
 
-            V = np.array(np.diag([sig_v_x ** 2, sig_v_y ** 2, sig_v_z ** 2, sig_v_roll ** 2, sig_v_pitch ** 2, sig_v_yaw ** 2,
+            v_mat = np.array(np.diag([sig_v_x ** 2, sig_v_y ** 2, sig_v_z ** 2, sig_v_roll ** 2, sig_v_pitch ** 2, sig_v_yaw ** 2,
                                   sig_v_dx ** 2, sig_v_dy ** 2, sig_v_dz ** 2, sig_v_droll ** 2, sig_v_dpitch ** 2, sig_v_dyaw ** 2]))
 
             # measurement noise
             sig_w_dist = rospy.get_param('ekf/w_mat/sig_w_dist')
             sig_w_yaw = rospy.get_param('ekf/w_mat/sig_w_yaw')
 
-            W = np.array(np.diag([sig_w_dist ** 2, sig_w_yaw ** 2]))
+            c_penalty_dist = rospy.get_param('ekf/w_mat/c_penalty_dist')
+            c_penalty_yaw = rospy.get_param('ekf/w_mat/c_penalty_yaw')
+
+            w_mat = np.array(np.diag([sig_w_dist ** 2, sig_w_yaw ** 2]))
 
         except KeyError:
             # if not defined, use distances and yaw measurement
@@ -285,7 +280,7 @@ class EKFNode(Node):
                 rospy.get_name()))
             exit(-1)
 
-        return dim_state, dim_meas, W, V, P0, x0
+        return dim_state, dim_meas, w_mat, v_mat, p0_mat, x0, c_penalty_dist, c_penalty_yaw
 
 
 def main():
@@ -295,7 +290,7 @@ def main():
     try:
         calibration_type = rospy.get_param('~calibration')
     except KeyError:
-        rospy.logerr("[{}] ######### You have to set a calibration parameter #########".format(rospy.get_name()))
+        rospy.logerr("[{}] Calibration parameter not (correctly) set".format(rospy.get_name()))
         exit(-1)
 
     # load measurement model parameter
