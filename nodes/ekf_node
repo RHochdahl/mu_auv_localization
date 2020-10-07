@@ -14,7 +14,7 @@ from sensor_msgs.msg import Imu
 from mavros_msgs.srv import SetMode
 from numpy import genfromtxt
 import os
-
+cam_reserved = False
 # NUM_P = 100
 state_dim = 3  # x, y, z
 # x_range = (0, 3)
@@ -119,7 +119,7 @@ def callback_orientation(msg, ekf):
 
 def callback(msg, tmp_list):
     """"""
-    global old_yaw, number_of_unseen_tags
+    global old_yaw, number_of_unseen_tags, cam_reserved
     [
         ekf, publisher_position, publisher_mavros, broadcaster,
         publisher_marker, publisher_twist
@@ -134,13 +134,24 @@ def callback(msg, tmp_list):
         measurements = np.zeros((num_meas, 1 + state_dim))
         for i, tag in enumerate(msg.detections):
             tag_id = int(tag.id[0])
-            tag_distance_cam = np.array(
-                ([
-                    tag.pose.pose.pose.position.x * 1.05,
-                    tag.pose.pose.pose.position.y * 1.1,
-                    tag.pose.pose.pose.position.z
-                ])
-            )  # Achtung hier ist die 0.1 wegen der kamera position hinzugefuegt
+            if cam_reserved:
+                tag_distance_cam = np.array(
+                    ([
+                        -tag.pose.pose.pose.position.x * 1.05,
+                        -tag.pose.pose.pose.position.y * 1.1,
+                        tag.pose.pose.pose.position.z
+                    ])
+                )  # Achtung hier ist die 0.1 wegen der kamera position hinzugefuegt
+
+            else:
+                tag_distance_cam = np.array(
+                    ([
+                        tag.pose.pose.pose.position.x * 1.05,
+                        tag.pose.pose.pose.position.y * 1.1,
+                        tag.pose.pose.pose.position.z
+                    ])
+                )  # Achtung hier ist die 0.1 wegen der kamera position hinzugefuegt
+
             measurements[i, 0] = np.linalg.norm(tag_distance_cam)
             tmpquat = Quaternion(w=tag.pose.pose.pose.orientation.w,
                                  x=tag.pose.pose.pose.orientation.x,
@@ -160,6 +171,9 @@ def callback(msg, tmp_list):
 
         yaw_list = np.asarray(orientation_yaw_pitch_roll[:, 0])
         yaw = np.arctan2(np.mean(np.sin(yaw_list)), np.mean(np.cos(yaw_list)))
+        if cam_reserved:
+            yaw = yaw+np.pi
+        #print('yaw',yaw)
         pitch = np.mean(orientation_yaw_pitch_roll[:, 1])
         roll = np.mean(orientation_yaw_pitch_roll[:, 2])
     else:
@@ -191,7 +205,7 @@ def callback(msg, tmp_list):
 
 
 def main():
-    global tags
+    global tags, cam_reserved
     rospy.init_node('ekf_node')
     try:
         which_calibration = rospy.get_param('~calibration')
@@ -200,6 +214,11 @@ def main():
             "################## You have to set a calibration parameter ###########################"
         )
         exit(-1)
+    try:
+        cam_reserved = rospy.get_param('~cam_reserved')
+    except KeyError:
+        cam_reserved = False
+
     if which_calibration == "gazebo":
         print("using gazebo calibration")
         data_path = rospack.get_path(
