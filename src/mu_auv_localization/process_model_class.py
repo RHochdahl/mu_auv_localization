@@ -11,7 +11,7 @@ class ProcessModel(object):
     def __init__(self, dim_state, dim_meas, V):
         self._dim_state = dim_state
         self._dim_meas = dim_meas
-        self._V = V
+        self.V = V
 
     def f(self, x_est, dt):
         x = x_est

@@ -50,7 +50,7 @@ class ExtendedKalmanFilter(object):
 
         z_est = self.measurement_model.h(self._x_est, detected_tags)
         h_mat = self.measurement_model.h_jacobian(self._x_est, detected_tags)
-        w_mat_dyn = self.measurement_model(self._x_est, measurements, detected_tags)
+        w_mat_dyn = self.measurement_model.dynamic_meas_model(self._x_est, measurements, detected_tags)
 
         y = measurements - z_est
         # compute K gain

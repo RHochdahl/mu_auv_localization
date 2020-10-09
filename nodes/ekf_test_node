@@ -17,20 +17,42 @@ from numpy import genfromtxt
 import threading
 
 rospack = rospkg.RosPack()
-tags = None
-cam_reversed = False
-meas_model_type = None
-process_model_type = None
 
 
 class EKFNode(Node):
     def __init__(self):
-        super(EKFNode, self).__init__("ekf_node")
+        super(EKFNode, self).__init__("ekf_test_node")
+
+        self.calibration_type = rospy.get_param('~calibration', 'gazebo')
+        self.meas_model_type = rospy.get_param('~measurement_model', 'dist')
+        self.process_model_type = rospy.get_param('~process_model', 'standard')
+        self.cam_reversed = rospy.get_param('~cam_reversed', 'False')
+
+        # load apriltag calibration
+        if self.calibration_type == "gazebo":
+            rospy.loginfo("[{}] Using gazebo calibration".format(rospy.get_name()))
+            data_path = rospack.get_path(
+                "mu_auv_localization"
+            ) + '/scripts/calibration_ground_truth_gazebo.csv'  # in gazebo
+        else:
+            if self.calibration_type == "water_tank":
+                rospy.loginfo("[{}] Using tank calibration".format(rospy.get_name()))
+                data_path = rospack.get_path(
+                    "mu_auv_localization"
+                ) + '/scripts/calibration_tank.csv'  # in real tank
+            else:
+                rospy.logerr("[{}] ######### Could not find correct parameter for calibration #########".format(
+                    rospy.get_name()))
+                exit(-1)
+
+        tags = genfromtxt(data_path, delimiter=',')  # home PC
+        tags = tags[:, 0:4]
+        self.tags = tags
 
         self.lock = threading.Lock()
         self.t_last_prediction = rospy.get_time()
 
-        if meas_model_type == "dist" and process_model_type == "standard":
+        if self.meas_model_type == "dist" and self.process_model_type == "standard":
             dim_state, dim_meas, w_mat, v_mat, p0_mat, x0, c_penalty_dist, c_penalty_yaw = self._load_ekf_params_dist()
 
             process_model = ProcessModel(dim_state, dim_meas, v_mat)
@@ -67,22 +89,21 @@ class EKFNode(Node):
         # if tags are detected
         if num_tags:
 
-            if meas_model_type == "dist":
+            if self.meas_model_type == "dist":
                 # measurement for each tag consists of distance and yaw angle
                 # -> dim_meas = 2
                 measurements = np.zeros((num_tags * self.ekf.dim_meas, 1))
                 detected_tags = np.zeros((num_tags, 4))
 
                 for i, tag in enumerate(tag_array_msg.detections):
-
                     tag_id = int(tag.id[0])
 
                     # add this tag's information to list of detected tags
-                    index = np.where(tags[:, 0] == tag_id)
-                    detected_tags[i, :] = tags[index, :]
+                    index = np.where(self.tags[:, 0] == tag_id)
+                    detected_tags[i, :] = self.tags[index, :]
 
                     # TODO "calibration"
-                    if cam_reversed:
+                    if self.cam_reversed:
                         tag_distance_cam = np.array(
                             ([
                                 -tag.pose.pose.pose.position.x * 1.05,
@@ -106,15 +127,15 @@ class EKFNode(Node):
 
                     yaw_tag_cam = tmpquat.inverse.yaw_pitch_roll[0]
 
-                    if cam_reversed:
+                    if self.cam_reversed:
                         yaw_tag_cam = yaw_tag_cam + np.pi
 
                     # measurement 1: distance tag - camera
-                    measurements[self.dim_meas * i, 0] = np.linalg.norm(tag_distance_cam)
+                    measurements[self.ekf.dim_meas * i, 0] = np.linalg.norm(tag_distance_cam)
                     # measurement 2: yaw angle tag - camera (todo check direction)
-                    measurements[self.self.dim_meas * i + 1, 0] = yaw_tag_cam
+                    measurements[self.ekf.dim_meas * i + 1, 0] = yaw_tag_cam
 
-            elif meas_model_type == "full_pose":
+            elif self.meas_model_type == "full_pose":
 
                 # not complete yet
 
@@ -128,11 +149,11 @@ class EKFNode(Node):
                     tag_id = int(tag.id[0])
 
                     # add this tag's information to list of detected tags
-                    index = np.where(tags[:, 0] == tag_id)
-                    detected_tags[i, :] = tags[index, :]
+                    index = np.where(self.tags[:, 0] == tag_id)
+                    detected_tags[i, :] = self.tags[index, :]
 
                     # TODO check "calibration", rewrite this
-                    if cam_reversed:
+                    if self.cam_reversed:
                         tag_distance_cam = np.array(
                             ([
                                 -tag.pose.pose.pose.position.x * 1.05,
@@ -154,7 +175,7 @@ class EKFNode(Node):
                                              y=tag.pose.pose.pose.orientation.y,
                                              z=tag.pose.pose.pose.orientation.z)
 
-                    if cam_reversed:
+                    if self.cam_reversed:
                         # todo
                         rospy.logerr("[{}] Orientation for reversed camera not defined yet.".format(rospy.get_name()))
 
@@ -176,22 +197,27 @@ class EKFNode(Node):
     def px4_callback(self, pose_msg):
 
         measurements = 0
-
+        """
         with self.lock:
             now = rospy.get_time()
             self.ekf.predict(now - self.t_last_prediction)
             self.t_last_prediction = now
             self.ekf.update_orientation(measurements)
+        """
+        pass
 
     def imu_callback(self, imu_msg):
 
         measurements = 0
 
+        """
         with self.lock:
             now = rospy.get_time()
             self.ekf.predict(now - self.t_last_prediction)
             self.t_last_prediction = now
             self.ekf.update_angular_vel(measurements)
+        """
+        pass
 
     def _publish_pose_estimation(self):
         estimation = self.ekf.get_x_est()
@@ -211,137 +237,72 @@ class EKFNode(Node):
 
     def _load_ekf_params_dist(self):
 
-        try:
-            dim_meas = rospy.get_param('ekf/dim_meas')
-            dim_state = rospy.get_param('ekf/dim_state')
+        dim_meas = EKFNode.get_param('~ekf/dim_meas')
+        dim_state = EKFNode.get_param('~ekf/dim_state')
 
-            # initial state
-            x = rospy.get_param('ekf/x0/x')
-            y = rospy.get_param('ekf/x0/y')
-            z = rospy.get_param('ekf/x0/z')
-            roll = rospy.get_param('ekf/x0/roll')
-            pitch = rospy.get_param('ekf/x0/pitch')
-            yaw = rospy.get_param('ekf/x0/yaw')
-            dx = rospy.get_param('ekf/x0/dx')
-            dy = rospy.get_param('ekf/x0/dy')
-            dz = rospy.get_param('ekf/x0/dz')
-            droll = rospy.get_param('ekf/x0/droll')
-            dpitch = rospy.get_param('ekf/x0/dpitch')
-            dyaw = rospy.get_param('ekf/x0/dyaw')
+        # initial state
+        x = self.get_param('~ekf/x0/x')
+        y = self.get_param('~ekf/x0/y')
+        z = self.get_param('~ekf/x0/z')
+        roll = self.get_param('~ekf/x0/roll')
+        pitch = self.get_param('~ekf/x0/pitch')
+        yaw = self.get_param('~ekf/x0/yaw')
+        dx = self.get_param('~ekf/x0/dx')
+        dy = self.get_param('~ekf/x0/dy')
+        dz = self.get_param('~ekf/x0/dz')
+        droll = self.get_param('~ekf/x0/droll')
+        dpitch = self.get_param('~ekf/x0/dpitch')
+        dyaw = self.get_param('~ekf/x0/dyaw')
 
-            x0 = np.array([x, y, z, roll, pitch, yaw, dx, dy, dz, droll, dpitch, dyaw]).reshape((-1, 1))
+        x0 = np.array([x, y, z, roll, pitch, yaw, dx, dy, dz, droll, dpitch, dyaw]).reshape((-1, 1))
 
-            # state covariance P0 params
-            sig_x = rospy.get_param('ekf/p_mat/sig_x')
-            sig_y = rospy.get_param('ekf/p_mat/sig_y')
-            sig_z = rospy.get_param('ekf/p_mat/sig_z')
-            sig_roll = rospy.get_param('ekf/p_mat/sig_roll')
-            sig_pitch = rospy.get_param('ekf/p_mat/sig_pitch')
-            sig_yaw = rospy.get_param('ekf/p_mat/sig_yaw')
-            sig_dx = rospy.get_param('ekf/p_mat/sig_dx')
-            sig_dy = rospy.get_param('ekf/p_mat/sig_dy')
-            sig_dz = rospy.get_param('ekf/p_mat/sig_dz')
-            sig_droll = rospy.get_param('ekf/p_mat/sig_droll')
-            sig_dpitch = rospy.get_param('ekf/p_mat/sig_dpitch')
-            sig_dyaw = rospy.get_param('ekf/p_mat/sig_dyaw')
+        # state covariance P0 params
+        sig_x = self.get_param('~ekf/p_mat/sig_x')
+        sig_y = self.get_param('~ekf/p_mat/sig_y')
+        sig_z = self.get_param('~ekf/p_mat/sig_z')
+        sig_roll = self.get_param('~ekf/p_mat/sig_roll')
+        sig_pitch = self.get_param('~ekf/p_mat/sig_pitch')
+        sig_yaw = self.get_param('~ekf/p_mat/sig_yaw')
+        sig_dx = self.get_param('~ekf/p_mat/sig_dx')
+        sig_dy = self.get_param('~ekf/p_mat/sig_dy')
+        sig_dz = self.get_param('~ekf/p_mat/sig_dz')
+        sig_droll = self.get_param('~ekf/p_mat/sig_droll')
+        sig_dpitch = self.get_param('~ekf/p_mat/sig_dpitch')
+        sig_dyaw = self.get_param('~ekf/p_mat/sig_dyaw')
 
-            p0_mat = np.array(np.diag([sig_x ** 2, sig_y ** 2, sig_z ** 2, sig_roll ** 2, sig_pitch ** 2, sig_yaw ** 2,
-                                   sig_dx ** 2, sig_dy ** 2, sig_dz ** 2, sig_droll ** 2, sig_dpitch ** 2, sig_dyaw ** 2]))
+        p0_mat = np.array(np.diag([sig_x ** 2, sig_y ** 2, sig_z ** 2, sig_roll ** 2, sig_pitch ** 2, sig_yaw ** 2,
+                               sig_dx ** 2, sig_dy ** 2, sig_dz ** 2, sig_droll ** 2, sig_dpitch ** 2, sig_dyaw ** 2]))
 
-            # process noise
-            sig_v_x = rospy.get_param('ekf/v_mat/sig_v_x')
-            sig_v_y = rospy.get_param('ekf/v_mat/sig_v_y')
-            sig_v_z = rospy.get_param('ekf/v_mat/sig_v_z')
-            sig_v_roll = rospy.get_param('ekf/v_mat/sig_v_roll')
-            sig_v_pitch = rospy.get_param('ekf/v_mat/sig_v_pitch')
-            sig_v_yaw = rospy.get_param('ekf/v_mat/sig_v_yaw')
-            sig_v_dx = rospy.get_param('ekf/v_mat/sig_v_dx')
-            sig_v_dy = rospy.get_param('ekf/v_mat/sig_v_dy')
-            sig_v_dz = rospy.get_param('ekf/v_mat/sig_v_dz')
-            sig_v_droll = rospy.get_param('ekf/v_mat/sig_v_droll')
-            sig_v_dpitch = rospy.get_param('ekf/v_mat/sig_v_dpitch')
-            sig_v_dyaw = rospy.get_param('ekf/v_mat/sig_v_dyaw')
+        # process noise
+        sig_v_x = self.get_param('~ekf/v_mat/sig_v_x')
+        sig_v_y = self.get_param('~ekf/v_mat/sig_v_y')
+        sig_v_z = self.get_param('~ekf/v_mat/sig_v_z')
+        sig_v_roll = self.get_param('~ekf/v_mat/sig_v_roll')
+        sig_v_pitch = self.get_param('~ekf/v_mat/sig_v_pitch')
+        sig_v_yaw = self.get_param('~ekf/v_mat/sig_v_yaw')
+        sig_v_dx = self.get_param('~ekf/v_mat/sig_v_dx')
+        sig_v_dy = self.get_param('~ekf/v_mat/sig_v_dy')
+        sig_v_dz = self.get_param('~ekf/v_mat/sig_v_dz')
+        sig_v_droll = self.get_param('~ekf/v_mat/sig_v_droll')
+        sig_v_dpitch = self.get_param('~ekf/v_mat/sig_v_dpitch')
+        sig_v_dyaw = self.get_param('~ekf/v_mat/sig_v_dyaw')
 
-            v_mat = np.array(np.diag([sig_v_x ** 2, sig_v_y ** 2, sig_v_z ** 2, sig_v_roll ** 2, sig_v_pitch ** 2, sig_v_yaw ** 2,
-                                  sig_v_dx ** 2, sig_v_dy ** 2, sig_v_dz ** 2, sig_v_droll ** 2, sig_v_dpitch ** 2, sig_v_dyaw ** 2]))
+        v_mat = np.array(np.diag([sig_v_x ** 2, sig_v_y ** 2, sig_v_z ** 2, sig_v_roll ** 2, sig_v_pitch ** 2, sig_v_yaw ** 2,
+                              sig_v_dx ** 2, sig_v_dy ** 2, sig_v_dz ** 2, sig_v_droll ** 2, sig_v_dpitch ** 2, sig_v_dyaw ** 2]))
 
-            # measurement noise
-            sig_w_dist = rospy.get_param('ekf/w_mat/sig_w_dist')
-            sig_w_yaw = rospy.get_param('ekf/w_mat/sig_w_yaw')
+        # measurement noise
+        sig_w_dist = self.get_param('~ekf/w_mat/sig_w_dist')
+        sig_w_yaw = self.get_param('~ekf/w_mat/sig_w_yaw')
 
-            c_penalty_dist = rospy.get_param('ekf/w_mat/c_penalty_dist')
-            c_penalty_yaw = rospy.get_param('ekf/w_mat/c_penalty_yaw')
+        c_penalty_dist = self.get_param('~ekf/w_mat/c_penalty_dist')
+        c_penalty_yaw = self.get_param('~ekf/w_mat/c_penalty_yaw')
 
-            w_mat = np.array(np.diag([sig_w_dist ** 2, sig_w_yaw ** 2]))
-
-        except KeyError:
-            # if not defined, use distances and yaw measurement
-            rospy.logerr("[{}] Some EKF parameter isn't defined correctly".format(
-                rospy.get_name()))
-            exit(-1)
+        w_mat = np.array(np.diag([sig_w_dist ** 2, sig_w_yaw ** 2]))
 
         return dim_state, dim_meas, w_mat, v_mat, p0_mat, x0, c_penalty_dist, c_penalty_yaw
 
 
 def main():
-    global tags, cam_reversed, meas_model_type, process_model_type
-
-    # load apriltag calibration
-    try:
-        calibration_type = rospy.get_param('~calibration')
-    except KeyError:
-        rospy.logerr("[{}] Calibration parameter not (correctly) set".format(rospy.get_name()))
-        exit(-1)
-
-    # load measurement model parameter
-    try:
-        meas_model_type = rospy.get_param('~measurement_model')
-    except KeyError:
-        # if not defined, use distances and yaw measurement
-        rospy.loginfo("[{}] No measurement model parameter defined, using distances + yaw measurement".format(
-            rospy.get_name()))
-        meas_model_type = "dist"
-
-    # load process model parameter
-    try:
-        process_model_type = rospy.get_param('~process_model')
-    except KeyError:
-        # if not defined, use distances and yaw measurement
-        rospy.loginfo("[{}] No process model parameter defined, using XXX".format(
-            rospy.get_name()))
-        meas_model_type = "standard"
-
-    # load camera reversed parameter
-    try:
-        cam_reversed = rospy.get_param('~cam_reserved')
-
-    except KeyError:
-        # if not defined, camera is not reversed
-        cam_reversed = False
-
-    if cam_reversed:
-        rospy.loginfo("[{}] Using reversed camera setup".format(rospy.get_name()))
-
-    if calibration_type == "gazebo":
-        rospy.loginfo("[{}] Using gazebo calibration".format(rospy.get_name()))
-        data_path = rospack.get_path(
-            "mu_auv_localization"
-        ) + '/scripts/calibration_ground_truth_gazebo.csv'  # in gazebo
-    else:
-        if calibration_type == "water_tank":
-            rospy.loginfo("[{}] Using tank calibration".format(rospy.get_name()))
-            data_path = rospack.get_path(
-                "mu_auv_localization"
-            ) + '/scripts/calibration_tank.csv'  # in real tank
-        else:
-            rospy.logerr("[{}] ######### Could not find correct parameter for calibration #########".format(
-                rospy.get_name()))
-            exit(-1)
-
-    tags = genfromtxt(data_path, delimiter=',')  # home PC
-    tags = tags[:, 0:4]
-    tags[:, 3] += 0.0  # todo WTF warum
-
     node = EKFNode()
     node.run()
 
