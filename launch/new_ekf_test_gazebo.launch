@@ -31,6 +31,7 @@
         output="screen">
     <param name="calibration" type="str" value="gazebo" />
     <param name="measurement_model" type="str" value="dist"/>
+    <rosparam command="load" file="$(find mu_auv_localization)/config/tag_poses.yaml"/>
     <rosparam command="load" file="$(find mu_auv_localization)/config/params/ekf_distances_params.yaml"/>
   </node>
 

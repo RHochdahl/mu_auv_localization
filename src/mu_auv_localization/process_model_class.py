@@ -15,7 +15,6 @@ class ProcessModel(object):
 
     def f(self, x_est, dt):
         x = x_est
-
         return x
 
     def f_jacobian(self, x_est, dt):

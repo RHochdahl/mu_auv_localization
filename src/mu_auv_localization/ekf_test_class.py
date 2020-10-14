@@ -1,6 +1,5 @@
 
 import numpy as np
-from pyquaternion import Quaternion
 import rospy
 
 from meas_model_class import MeasurementModelDistances
@@ -25,7 +24,7 @@ class ExtendedKalmanFilter(object):
     def get_x_est(self):
         return self._x_est
 
-    def get_P(self):
+    def get_p_mat(self):
         return self._p_mat
 
     def reset(self, x_est_0=None, p0_mat=None):
@@ -46,15 +45,11 @@ class ExtendedKalmanFilter(object):
 
         return True
 
-    def update(self, measurements, detected_tags):
+    def _update(self, y, h_mat, w_mat):
+        """ helper function for general update """
 
-        z_est = self.measurement_model.h(self._x_est, detected_tags)
-        h_mat = self.measurement_model.h_jacobian(self._x_est, detected_tags)
-        w_mat_dyn = self.measurement_model.dynamic_meas_model(self._x_est, measurements, detected_tags)
-
-        y = measurements - z_est
         # compute K gain
-        tmp = np.matmul(np.matmul(h_mat, self._p_mat), h_mat.transpose()) + w_mat_dyn
+        tmp = np.matmul(np.matmul(h_mat, self._p_mat), h_mat.transpose()) + w_mat
         k_mat = np.matmul(np.matmul(self._p_mat, h_mat.transpose()), np.linalg.inv(tmp))
 
         # update state
@@ -66,23 +61,51 @@ class ExtendedKalmanFilter(object):
 
         return True
 
-    def update_orientation(self, measurements):
+    def update_vision_data(self, measurements, detected_tags):
+
+        z_est_vision = self.measurement_model.h_vision_data(self._x_est, detected_tags)
+        h_mat_vision = self.measurement_model.h_jacobian_vision_data(self._x_est, detected_tags)
+        w_mat_vision_dyn = self.measurement_model.vision_dynamic_meas_model(self._x_est, measurements, detected_tags)
+
+        y = measurements - z_est_vision
+        self._update(y, h_mat_vision, w_mat_vision_dyn)
 
         return True
 
-    def update_angular_vel(self, measurements):
+    def update_orientation_data(self, measurements):
+        # measurement is: roll, pitch from /mavros/local_position/pose
+
+        z_est_orient = self.measurement_model.h_orientation_data(self._x_est)
+        h_mat_orient = self.measurement_model.h_jacobian_orientation_data()
+
+        y_orientation = measurements - z_est_orient
+        self._update(y_orientation, h_mat_orient, self.measurement_model.w_mat_orientation)
 
         return True
 
-    # todo: check this, taken from tim
+    def update_imu_data(self, measurements, w_mat_imu):
+        # measurement is either: body rates + lin. acceleration
+        #               or: only body rates
+
+        # currently only using body rates
+        z_est_imu = self.measurement_model.h_imu_data(self._x_est)
+        h_mat_imu = self.measurement_model.h_jacobian_imu_data()
+        y_imu = measurements - z_est_imu
+        self._update(y_imu, h_mat_imu, w_mat_imu)
+
+        return True
+
     @staticmethod
-    def yaw_pitch_roll_to_quat(yaw, pitch, roll):
+    def roll_pitch_yaw_to_quat(roll, pitch, yaw):
         cy = np.cos(yaw * 0.5)
         sy = np.sin(yaw * 0.5)
         cp = np.cos(pitch * 0.5)
         sp = np.sin(pitch * 0.5)
         cr = np.cos(roll * 0.5)
         sr = np.sin(roll * 0.5)
-        return (Quaternion(x=cy * cp * sr - sy * sp * cr, y=sy * cp * sr + cy * sp * cr, z=sy * cp * cr - cy * sp * sr,
-                           w=cy * cp * cr + sy * sp * sr))
+        qx = cy * cp * sr - sy * sp * cr
+        qy = sy * cp * sr + cy * sp * cr
+        qz = sy * cp * cr - cy * sp * sr
+        qw = cy * cp * cr + sy * sp * sr
+        return qx, qy, qz, qw
 

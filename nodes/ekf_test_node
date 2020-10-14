@@ -5,12 +5,13 @@ from pyquaternion import Quaternion
 import rospy
 import rospkg
 import tf
+
 from hippocampus_common.node import Node
 from mu_auv_localization.ekf_test_class import ExtendedKalmanFilter
 from mu_auv_localization.meas_model_class import MeasurementModelDistances
 from mu_auv_localization.process_model_class import ProcessModel
 
-from geometry_msgs.msg import PoseStamped, TwistStamped
+from geometry_msgs.msg import PoseStamped, TwistStamped, Transform
 from apriltag_ros.msg import AprilTagDetectionArray
 from sensor_msgs.msg import Imu
 from numpy import genfromtxt
@@ -22,55 +23,59 @@ rospack = rospkg.RosPack()
 class EKFNode(Node):
     def __init__(self):
         super(EKFNode, self).__init__("ekf_test_node")
-
-        self.calibration_type = rospy.get_param('~calibration', 'gazebo')
-        self.meas_model_type = rospy.get_param('~measurement_model', 'dist')
-        self.process_model_type = rospy.get_param('~process_model', 'standard')
-        self.cam_reversed = rospy.get_param('~cam_reversed', 'False')
-
-        # load apriltag calibration
-        if self.calibration_type == "gazebo":
-            rospy.loginfo("[{}] Using gazebo calibration".format(rospy.get_name()))
-            data_path = rospack.get_path(
-                "mu_auv_localization"
-            ) + '/scripts/calibration_ground_truth_gazebo.csv'  # in gazebo
-        else:
-            if self.calibration_type == "water_tank":
-                rospy.loginfo("[{}] Using tank calibration".format(rospy.get_name()))
-                data_path = rospack.get_path(
-                    "mu_auv_localization"
-                ) + '/scripts/calibration_tank.csv'  # in real tank
-            else:
-                rospy.logerr("[{}] ######### Could not find correct parameter for calibration #########".format(
-                    rospy.get_name()))
-                exit(-1)
-
-        tags = genfromtxt(data_path, delimiter=',')  # home PC
-        tags = tags[:, 0:4]
-        self.tags = tags
-
         self.lock = threading.Lock()
         self.t_last_prediction = rospy.get_time()
 
+        self.tf_transformer = tf.TransformerROS(interpolate=False)
+
+        # get tag position for gazebo or real water tank
+        try:
+            calibration_type = rospy.get_param('~calibration')
+        except KeyError:
+            rospy.logerr("[{}] You have to set a calibration parameter".format(rospy.get_name()))
+            exit(-1)
+
+        if calibration_type == "gazebo":
+            data_path = rospack.get_path(
+                "mu_auv_localization"
+            ) + '/scripts/calibration_ground_truth_gazebo.csv'  # in gazebo
+            tags = genfromtxt(data_path, delimiter=',')  # home PC
+            tags = tags[:, 0:4]
+        elif calibration_type == "water_tank":
+            # load tag poses from tag_poses.yaml file ->
+            # todo: this *should* be the same in gazebo and real tank
+            #  -> adjust this in gazebo?!
+            tags = self._load_tag_poses()
+
+        self.tags = tags
+
+        self.meas_model_type = rospy.get_param('~measurement_model', 'dist')
+        self.process_model_type = rospy.get_param('~process_model', 'standard')
+
         if self.meas_model_type == "dist" and self.process_model_type == "standard":
-            dim_state, dim_meas, w_mat, v_mat, p0_mat, x0, c_penalty_dist, c_penalty_yaw = self._load_ekf_params_dist()
+            dim_state, dim_meas, w_mat, v_mat, p0_mat, x0, \
+                c_penalty_dist, c_penalty_yaw, w_mat_orient = self._load_ekf_params_dist()
 
             process_model = ProcessModel(dim_state, dim_meas, v_mat)
-            measurement_model = MeasurementModelDistances(dim_state, dim_meas, w_mat, c_penalty_dist, c_penalty_yaw)
+            measurement_model = MeasurementModelDistances(dim_state, dim_meas, w_mat, c_penalty_dist, c_penalty_yaw, w_mat_orient)
             self.ekf = ExtendedKalmanFilter(dim_state, dim_meas, measurement_model, process_model, x0, p0_mat)
         else:
             rospy.logerr("[{}] Choose valid measurement model.".format(rospy.get_name()))
             exit(-1)
 
-        self.vision_pose_pub = rospy.Publisher("mavros/vision_pose/pose", PoseStamped,
+        self.vision_pose_pub = rospy.Publisher("mavros/vision_pose/pose",
+                                               PoseStamped,
                                                queue_size=1)
+        self.estimated_pose_pub = rospy.Publisher('estimated_pose',
+                                                  PoseStamped,
+                                                  queue_size=1)
+        self.twist_pub = rospy.Publisher('estimated_twist',
+                                         TwistStamped,
+                                         queue_size=1)
 
-        self.estimated_pose_pub = rospy.Publisher('estimated_pose', PoseStamped, queue_size=1)
-        self.twist_pub = rospy.Publisher('estimated_twist', TwistStamped, queue_size=1)
-
-        rospy.Subscriber("pose_px4",
+        rospy.Subscriber("mavros/local_position/pose",
                          PoseStamped,
-                         self.px4_callback,
+                         self.orientation_callback,
                          queue_size=1)
 
         rospy.Subscriber("mavros/imu/data",
@@ -100,25 +105,16 @@ class EKFNode(Node):
 
                     # add this tag's information to list of detected tags
                     index = np.where(self.tags[:, 0] == tag_id)
-                    detected_tags[i, :] = self.tags[index, :]
+                    detected_tags[i, :] = self.tags[index, 0:4]
 
                     # TODO "calibration"
-                    if self.cam_reversed:
-                        tag_distance_cam = np.array(
-                            ([
-                                -tag.pose.pose.pose.position.x * 1.05,
-                                -tag.pose.pose.pose.position.y * 1.1,
-                                tag.pose.pose.pose.position.z
-                            ])
-                        )  # Achtung hier ist die 0.1 wegen der kamera position hinzugefuegt
-                    else:
-                        tag_distance_cam = np.array(
-                            ([
-                                tag.pose.pose.pose.position.x * 1.05,
-                                tag.pose.pose.pose.position.y * 1.1,
-                                tag.pose.pose.pose.position.z
-                            ])
-                        )  # Achtung hier ist die 0.1 wegen der kamera position hinzugefuegt
+                    tag_distance_cam = np.array(
+                        ([
+                            tag.pose.pose.pose.position.x * 1.05,
+                            tag.pose.pose.pose.position.y * 1.1,
+                            tag.pose.pose.pose.position.z
+                        ])
+                    )  # Achtung hier ist die 0.1 wegen der kamera position hinzugefuegt
 
                     tmpquat = Quaternion(w=tag.pose.pose.pose.orientation.w,
                                          x=tag.pose.pose.pose.orientation.x,
@@ -126,9 +122,7 @@ class EKFNode(Node):
                                          z=tag.pose.pose.pose.orientation.z)
 
                     yaw_tag_cam = tmpquat.inverse.yaw_pitch_roll[0]
-
-                    if self.cam_reversed:
-                        yaw_tag_cam = yaw_tag_cam + np.pi
+                    # print('tag id: ', tag.id, 'yaw_tag_cam', yaw_tag_cam)
 
                     # measurement 1: distance tag - camera
                     measurements[self.ekf.dim_meas * i, 0] = np.linalg.norm(tag_distance_cam)
@@ -150,34 +144,21 @@ class EKFNode(Node):
 
                     # add this tag's information to list of detected tags
                     index = np.where(self.tags[:, 0] == tag_id)
-                    detected_tags[i, :] = self.tags[index, :]
+                    detected_tags[i, :] = self.tags[index, 0:4]
 
                     # TODO check "calibration", rewrite this
-                    if self.cam_reversed:
-                        tag_distance_cam = np.array(
-                            ([
-                                -tag.pose.pose.pose.position.x * 1.05,
-                                -tag.pose.pose.pose.position.y * 1.1,
-                                tag.pose.pose.pose.position.z
-                            ])
-                        )  # Achtung hier ist die 0.1 wegen der kamera position hinzugefuegt
-                    else:
-                        tag_distance_cam = np.array(
-                            ([
-                                tag.pose.pose.pose.position.x * 1.05,
-                                tag.pose.pose.pose.position.y * 1.1,
-                                tag.pose.pose.pose.position.z
-                            ])
-                        )  # Achtung hier ist die 0.1 wegen der kamera position hinzugefuegt
+                    tag_distance_cam = np.array(
+                        ([
+                            tag.pose.pose.pose.position.x * 1.05,
+                            tag.pose.pose.pose.position.y * 1.1,
+                            tag.pose.pose.pose.position.z
+                        ])
+                    )  # Achtung hier ist die 0.1 wegen der kamera position hinzugefuegt
 
                     orientation = Quaternion(w=tag.pose.pose.pose.orientation.w,
                                              x=tag.pose.pose.pose.orientation.x,
                                              y=tag.pose.pose.pose.orientation.y,
                                              z=tag.pose.pose.pose.orientation.z)
-
-                    if self.cam_reversed:
-                        # todo
-                        rospy.logerr("[{}] Orientation for reversed camera not defined yet.".format(rospy.get_name()))
 
                     # measurement: full pose, orientation not transformed yet!
                     measurements[(self.dim_meas * i):(self.dim_meas*(i + 1) - 1), 0] \
@@ -190,50 +171,87 @@ class EKFNode(Node):
                 now = rospy.get_time()
                 self.ekf.predict(now - self.t_last_prediction)
                 self.t_last_prediction = now
-                self.ekf.update(measurements, detected_tags)
+                self.ekf.update_vision_data(measurements, detected_tags)
 
             self._publish_pose_estimation()
+            self._publish_twist_estimation()
 
-    def px4_callback(self, pose_msg):
+    def orientation_callback(self, pose_msg):
 
-        measurements = 0
-        """
+        tmpquat = Quaternion(pose_msg.pose.orientation.w,
+                             pose_msg.pose.orientation.x,
+                             pose_msg.pose.orientation.y,
+                             pose_msg.pose.orientation.z)
+
+        yaw, pitch, roll = tmpquat.inverse.yaw_pitch_roll  # todo: check if correct
+        # print('yaw from px4', yaw)
+        measurements = np.array([roll, pitch]).reshape((-1, 1))
+
         with self.lock:
             now = rospy.get_time()
             self.ekf.predict(now - self.t_last_prediction)
             self.t_last_prediction = now
-            self.ekf.update_orientation(measurements)
-        """
-        pass
+            self.ekf.update_orientation_data(measurements)
 
     def imu_callback(self, imu_msg):
 
-        measurements = 0
+        angular_vel = np.array([imu_msg.angular_velocity.x,
+                                imu_msg.angular_velocity.y,
+                                imu_msg.angular_velocity.z])
 
-        """
+        # linear_acc = np.array([imu_msg.linear_acceleration.x,
+        #                        imu_msg.linear_acceleration.y,
+        #                        imu_msg.linear_acceleration.z])
+        # measurements = np.array([angular_vel, linear_acc]).reshape((-1, 1))
+        # # covariances
+        # angular_vel_cov = np.asarray(imu_msg.angular_velocity_covariance).reshape((3, 3))
+        # linear_acc_cov = np.asarray(imu_msg.linear_acceleration_covariance).reshape((3, 3))
+        # # directly using covariances from /mavros/imu/data msg
+        # w_mat_imu = np.block([[angular_vel_cov, np.zeros((3, 3))],
+        #                       [np.zeros((3, 3)), linear_acc_cov]])
+
+        # for now, only using body rates
+        measurements = np.array([angular_vel]).reshape((-1, 1))
+        w_mat_imu = np.asarray(imu_msg.angular_velocity_covariance).reshape((3, 3))
+
         with self.lock:
             now = rospy.get_time()
             self.ekf.predict(now - self.t_last_prediction)
             self.t_last_prediction = now
-            self.ekf.update_angular_vel(measurements)
-        """
-        pass
+            self.ekf.update_imu_data(measurements, w_mat_imu)
 
     def _publish_pose_estimation(self):
         estimation = self.ekf.get_x_est()
         position = estimation[:3]
-        orientation = estimation[3:7]
-        pose = PoseStamped()
-        pose.pose.position.x = position[0]
-        pose.pose.position.y = position[1]
-        pose.pose.position.z = position[2]
-        pose.pose.orientation.x = orientation[0]
-        pose.pose.orientation.y = orientation[1]
-        pose.pose.orientation.z = orientation[2]
-        pose.pose.orientation.w = orientation[3]
-        pose.header.stamp = rospy.Time.now()
-        pose.header.frame_id = "map"
-        self.vision_pose_pub.publish(pose)
+        orientation = estimation[3:6]
+        # transform to quaternion
+        qx, qy, qz, qw = self.ekf.roll_pitch_yaw_to_quat(orientation[0], orientation[1], orientation[2])
+        p = PoseStamped()
+        p.pose.position.x = position[0]
+        p.pose.position.y = position[1]
+        p.pose.position.z = position[2]
+        p.pose.orientation.x = qx
+        p.pose.orientation.y = qy
+        p.pose.orientation.z = qz
+        p.pose.orientation.w = qw
+        p.header.stamp = rospy.Time.now()
+        p.header.frame_id = "map"
+        self.vision_pose_pub.publish(p)
+        self.estimated_pose_pub.publish(p)
+
+    def _publish_twist_estimation(self):
+        estimation = self.ekf.get_x_est()
+
+        t = TwistStamped()
+        t.twist.linear.x = estimation[6]
+        t.twist.linear.y = estimation[7]
+        t.twist.linear.z = estimation[8]
+        t.twist.angular.x = estimation[9]
+        t.twist.angular.y = estimation[10]
+        t.twist.angular.z = estimation[11]
+        t.header.stamp = rospy.Time.now()
+        # todo: frame id -> body
+        self.twist_pub.publish(t)
 
     def _load_ekf_params_dist(self):
 
@@ -299,7 +317,47 @@ class EKFNode(Node):
 
         w_mat = np.array(np.diag([sig_w_dist ** 2, sig_w_yaw ** 2]))
 
-        return dim_state, dim_meas, w_mat, v_mat, p0_mat, x0, c_penalty_dist, c_penalty_yaw
+        # measurement noise orientation (using data from mavros/local_position/pose)
+        sig_w_roll = self.get_param('~ekf/w_mat_orient/sig_w_roll')
+        sig_w_pitch = self.get_param('~ekf/w_mat_orient/sig_w_pitch')
+
+        w_mat_orient = np.array(np.diag([sig_w_roll ** 2, sig_w_pitch ** 2]))
+
+        return dim_state, dim_meas, w_mat, v_mat, p0_mat, x0, c_penalty_dist, c_penalty_yaw, w_mat_orient
+
+    def _load_tag_poses(self):
+
+        tag_poses = rospy.get_param('~tag_poses')
+
+        # initialize tags matrix: each row contains id, x, y, z, qw, qx, qy, qz for this tag
+        # position and orientation in map frame
+        tags = np.zeros((len(tag_poses), 8))
+
+        for tag in tag_poses:
+            # doesn't work with frame_id "map_ned" yet todo
+            # to transform to map frame: write as ROS msg
+            # gibt sicherlich auch direkteren weg
+            p = PoseStamped()
+            p.header.frame_id = str(tag['frame_id'])
+            p.pose.position.x = tag['x']
+            p.pose.position.y = tag['y']
+            p.pose.position.z = tag['z']
+            p.pose.orientation.x = tag['qx']
+            p.pose.orientation.y = tag['qy']
+            p.pose.orientation.z = tag['qz']
+            p.pose.orientation.w = tag['qw']
+            tag_pose_map = self.tf_transformer.transformPose(target_frame="map", ps=p)
+
+            tags[tag['id'], :] = np.array([tag['id'],
+                                           tag_pose_map.pose.position.x,
+                                           tag_pose_map.pose.position.y,
+                                           tag_pose_map.pose.position.z,
+                                           tag_pose_map.pose.orientation.w,
+                                           tag_pose_map.pose.orientation.x,
+                                           tag_pose_map.pose.orientation.y,
+                                           tag_pose_map.pose.orientation.z])
+
+        return tags
 
 
 def main():
