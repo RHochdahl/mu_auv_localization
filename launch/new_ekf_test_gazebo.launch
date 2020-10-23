@@ -6,7 +6,9 @@
   <arg name="camera_frame" default="camera_frame" />
   <arg name="image_topic" default="image_raw" />
   <arg name="ns" />
-
+  <arg name="less_tags" default="false" />
+  <arg if="$(arg less_tags)" name="tag_yaml_file" value="$(find mu_auv_localization)/config/less_tags_standalone.yaml" />
+  <arg unless="$(arg less_tags)" name="tag_yaml_file" value="$(find mu_auv_localization)/config/tags_standalone.yaml" />
 
   <!-- Apriltag algorithm -->
   <node pkg="apriltag_ros"
@@ -17,7 +19,7 @@
         launch-prefix="$(arg launch_prefix)">
 
     <rosparam command="load" file="$(find apriltag_ros)/config/settings.yaml" />
-    <rosparam command="load" file="$(find mu_auv_localization)/config/tags_standalone.yaml" />
+    <rosparam command="load" file="$(arg tag_yaml_file)" />
     <remap from="image_rect" to="$(arg camera_name)/$(arg image_topic)" />
     <param name="camera_frame" type="str" value="$(arg ns)/$(arg camera_frame)" />
     <param name="publish_tag_detections_image" type="bool" value="true" />

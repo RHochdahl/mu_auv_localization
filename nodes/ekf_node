@@ -171,7 +171,7 @@ def callback(msg, tmp_list):
         yaw_list = np.asarray(orientation_yaw_pitch_roll[:, 0])
         yaw = np.arctan2(np.mean(np.sin(yaw_list)), np.mean(np.cos(yaw_list)))
         if cam_reversed:
-            yaw = yaw+np.pi
+            yaw = yaw + np.pi
         #print('yaw',yaw)
         pitch = np.mean(orientation_yaw_pitch_roll[:, 1])
         roll = np.mean(orientation_yaw_pitch_roll[:, 2])

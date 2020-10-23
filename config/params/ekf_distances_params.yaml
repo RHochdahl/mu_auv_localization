@@ -50,8 +50,8 @@ ekf: {
        },
        # VISION: measurement noise covariance W parameters
        w_mat: {
-                sig_w_dist: 1.0,
-                sig_w_yaw: 1.0,
+                sig_w_dist: 0.01,
+                sig_w_yaw: 0.01,
                 # penalty factor for dynamic measurement noise
                 c_penalty_dist: 5.0,
                 c_penalty_yaw: 5.0,

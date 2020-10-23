@@ -4,7 +4,6 @@ import rospy
 
 # state: [x, y, z, roll, pitch, yaw, dx, dy, dz, droll, dpitch, dyaw]
 # linear and angular velocities in body frame
-# todo: frame conventions -> work entirely in ROS standards?
 
 
 class ProcessModel(object):
