@@ -1,12 +1,11 @@
 <launch>
-
-
   <arg name="launch_prefix" default="" /> <!-- set to value="gdbserver localhost:10000" for remote debugging -->
   <arg name="camera_name" default="camera" />
   <arg name="camera_frame" default="camera_frame" />
   <arg name="image_topic" default="image_raw" />
   <arg name="ns" />
   <arg name="less_tags" default="false" />
+  <arg name="process_model" default="simple" />
   <arg if="$(arg less_tags)" name="tag_yaml_file" value="$(find mu_auv_localization)/config/less_tags_standalone.yaml" />
   <arg unless="$(arg less_tags)" name="tag_yaml_file" value="$(find mu_auv_localization)/config/tags_standalone.yaml" />
 
@@ -27,12 +26,13 @@
 
   <!-- Start EKF Localization -->
   <node pkg="mu_auv_localization"
-        type="ekf_test_node"
-        name="ekf_test_node"
+        type="vision_ekf_node"
+        name="vision_ekf_node"
         clear_params="true"
         output="screen">
     <param name="calibration" type="str" value="gazebo" />
     <param name="measurement_model" type="str" value="dist"/>
+    <param name="process_model" type="str" value="$(arg process_model)"/>
     <rosparam command="load" file="$(find mu_auv_localization)/config/tag_poses.yaml"/>
     <rosparam command="load" file="$(find mu_auv_localization)/config/params/ekf_distances_params.yaml"/>
   </node>

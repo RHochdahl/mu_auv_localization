@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from mu_auv_localization import ekf_class
+from mu_auv_localization import ekf_class_tim
 import numpy as np
 import rospkg
 from pyquaternion import Quaternion
@@ -169,6 +169,7 @@ def callback(msg, tmp_list):
         #    number_of_unseen_tags = 0
 
         yaw_list = np.asarray(orientation_yaw_pitch_roll[:, 0])
+        # wrap yaw to be between -pi and pi:
         yaw = np.arctan2(np.mean(np.sin(yaw_list)), np.mean(np.cos(yaw_list)))
         if cam_reversed:
             yaw = yaw + np.pi
@@ -222,13 +223,13 @@ def main():
         print("using gazebo calibration")
         data_path = rospack.get_path(
             "mu_auv_localization"
-        ) + '/scripts/calibration_ground_truth_gazebo.csv'  # in gazebo
+        ) + '/scripts/old/calibration_ground_truth_gazebo.csv'  # in gazebo
     else:
         if which_calibration == "water_tank":
             print("using real calibration")
             data_path = rospack.get_path(
                 "mu_auv_localization"
-            ) + '/scripts/calibration_tank.csv'  # in real tank
+            ) + '/scripts/old/calibration_tank.csv'  # in real tank
         else:
             print("could not find correct parameter for calibration ")
             exit(-1)
@@ -236,7 +237,7 @@ def main():
     tags = tags[:, 0:4]
     tags[:, 3] += 0.0
 
-    ekf = ekf_class.ExtendedKalmanFilter()
+    ekf = ekf_class_tim.ExtendedKalmanFilter()
 
     publisher_position = rospy.Publisher('estimated_pose',
                                          PoseStamped,

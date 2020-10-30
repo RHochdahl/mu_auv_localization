@@ -15,7 +15,7 @@
   </node>
 
   <!-- Start EKF Localization -->
-  <node pkg="mu_auv_localization" type="ekf_node" name="ekf_node" clear_params="true" output="screen">
+  <node pkg="mu_auv_localization" type="ekf_node_tim" name="ekf_node_tim" clear_params="true" output="screen">
     <param name="calibration" type="str" value="gazebo" />
   </node>
 

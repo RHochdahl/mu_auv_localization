@@ -1,4 +1,13 @@
+from __future__ import print_function
 import numpy as np
+"""
+Different measurement models for the EKF for the visual localization
+    - Distances: using distance and yaw angle to tag as measurement
+    - ...
+
+EKF state: [x, y, z, roll, pitch, yaw, dx, dy, dz, droll, dpitch, dyaw]
+(linear and angular velocities in body frame)
+"""
 
 
 class MeasurementModelDistances(object):
@@ -12,7 +21,7 @@ class MeasurementModelDistances(object):
         self.w_mat_orientation = w_mat_orientation
 
     def h_vision_data(self, x_est, detected_tags):
-
+        # measurement is: distance and yaw-angle to each tag
         num_tags = detected_tags.shape[0]
         z_est = np.zeros((num_tags * self._dim_meas, 1))
 
@@ -26,9 +35,7 @@ class MeasurementModelDistances(object):
 
         return z_est  # dim [num_tags*dim_meas X 1]
 
-    # Jacobian of the measurement function
     def h_jacobian_vision_data(self, x_est, detected_tags):
-
         num_tags = detected_tags.shape[0]
         h_mat = np.zeros((num_tags * self._dim_meas, self._dim_state))
 
@@ -63,17 +70,27 @@ class MeasurementModelDistances(object):
         h_mat[1, 4] = 1.0  # dh/ dpitch
         return h_mat  # dim [2 X dim_state]
 
-    def h_imu_data(self, x_est):
-        # measurement is: body rates
-        z_est = np.array([x_est[9], x_est[10], x_est[11]]).reshape((-1, 1))
+    def h_imu_data(self, x_est, using_lin_acc=False):
+        if not using_lin_acc:
+            # measurement is: roll rate, pitch rate, yaw rate
+            z_est = np.array([x_est[9], x_est[10], x_est[11]]).reshape((-1, 1))
+        else:
+            # measurement is: angular velocities and linear accelerations
+            print('using linear acceleration measurements from IMU! ' +
+                  'Not implemented yet')
         return z_est
 
-    def h_jacobian_imu_data(self):
-        h_mat = np.zeros((3, self._dim_state))
-        # all derivatives zero except for body rates
-        h_mat[0, 9] = 1.0
-        h_mat[1, 10] = 1.0
-        h_mat[2, 11] = 1.0
+    def h_jacobian_imu_data(self, using_lin_acc=False):
+        if not using_lin_acc:
+            h_mat = np.zeros((3, self._dim_state))
+            # all derivatives zero except for body rates
+            h_mat[0, 9] = 1.0
+            h_mat[1, 10] = 1.0
+            h_mat[2, 11] = 1.0
+        else:
+            print('using linear acceleration measurements from IMU! ' +
+                  'Not implemented yet')
+
         return h_mat  # dim [3 X dim_state]
 
     def vision_dynamic_meas_model(self, x_est, measurements, detected_tags):

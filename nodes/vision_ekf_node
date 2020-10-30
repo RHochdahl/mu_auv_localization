@@ -1,21 +1,26 @@
 #!/usr/bin/env python
-
+from __future__ import print_function
 import numpy as np
 import rospy
-import rospkg
 import tf.transformations
 import tf2_ros
 import tf2_geometry_msgs
 
 from hippocampus_common.node import Node
-from mu_auv_localization.ekf_test_class import ExtendedKalmanFilter
+from hippocampus_common.tf_helper import TfHelper
+from mu_auv_localization.ekf_class import ExtendedKalmanFilter
 from mu_auv_localization.meas_model_class import MeasurementModelDistances
-from mu_auv_localization.process_model_class import ProcessModel
+from mu_auv_localization.process_model_class import ProcessModel, \
+    ProcessModelVelocities
 
-from geometry_msgs.msg import PoseStamped, TwistStamped, Quaternion, TransformStamped
+from geometry_msgs.msg import PoseStamped, TwistStamped
 from apriltag_ros.msg import AprilTagDetectionArray
 from sensor_msgs.msg import Imu
 import threading
+
+# numpy printing options
+float_formatter = "{:.5f}".format
+np.set_printoptions(formatter={'float_kind': float_formatter})
 
 
 class EKFNode(Node):
@@ -24,60 +29,72 @@ class EKFNode(Node):
         self.lock = threading.Lock()
         self.t_last_prediction = rospy.get_time()
 
-        self.tf_transformer = tf.TransformerROS(interpolate=False)
-
+        self.tf_helper = TfHelper()
         self.tf_buffer = tf2_ros.Buffer()
-        self._tf_listener = tf2_ros.TransformListener(self.tf_buffer)
-        self.tf_broadcaster = tf2_ros.TransformBroadcaster()
+        self._base_link_id = self.tf_helper.get_base_link_id()
 
         self.tags = self._load_tag_poses()
 
         self.meas_model_type = rospy.get_param('~measurement_model', 'dist')
-        self.process_model_type = rospy.get_param('~process_model', 'standard')
+        self.process_model_type = rospy.get_param('~process_model', 'simple')
 
-        if self.meas_model_type == "dist" and self.process_model_type == "standard":
+        # choose measurement model
+        if self.meas_model_type == "dist":
+            # load parameters from param file for EKF using distance measurement
             dim_state, dim_meas, w_mat, v_mat, p0_mat, x0, \
                 c_penalty_dist, c_penalty_yaw, w_mat_orient \
-                    = self._load_ekf_params_dist()
+                = self._load_ekf_params_dist()
 
-            process_model = ProcessModel(dim_state, dim_meas, v_mat)
+            # initialize measurement model
             measurement_model = MeasurementModelDistances(
                 dim_state, dim_meas, w_mat, c_penalty_dist, c_penalty_yaw,
                 w_mat_orient)
-            self.ekf = ExtendedKalmanFilter(dim_state, dim_meas,
-                                            measurement_model, process_model,
-                                            x0, p0_mat)
         else:
             rospy.logerr("[{}] Choose valid measurement model.".format(
                 rospy.get_name()))
             exit(-1)
 
+        # choose process model
+        if self.process_model_type == "simple":
+            rospy.loginfo("[{}] Process model: new state = old state.".format(
+                rospy.get_name()))
+            process_model = ProcessModel(dim_state, dim_meas, v_mat)
+        elif self.process_model_type == "velocities":
+            rospy.loginfo(
+                "[{}] Process model: using velocities to predict next position."
+                .format(rospy.get_name()))
+            process_model = ProcessModelVelocities(dim_state, dim_meas, v_mat)
+        else:
+            rospy.logerr("[{}] Choose valid process model.".format(
+                rospy.get_name()))
+            exit(-1)
+
+        # initialize EKF
+        self.ekf = ExtendedKalmanFilter(dim_state, dim_meas, measurement_model,
+                                        process_model, x0, p0_mat)
+
+        # publishers and subscribers
         self.vision_pose_pub = rospy.Publisher("mavros/vision_pose/pose",
                                                PoseStamped,
                                                queue_size=1)
-        self.est_pose_ned_pub = rospy.Publisher('est_pose_ned',
-                                                PoseStamped,
-                                                queue_size=1)
-        self.twist_pub = rospy.Publisher('estimated_twist',
-                                         TwistStamped,
-                                         queue_size=1)
         self.ekf_pose_pub = rospy.Publisher("ekf_pose",
                                             PoseStamped,
                                             queue_size=1)
         self.ekf_twist_pub = rospy.Publisher("ekf_twist",
                                              TwistStamped,
                                              queue_size=1)
-
-        # rospy.Subscriber("mavros/local_position/pose",
-        #                  PoseStamped,
-        #                  self.orientation_callback,
-        #                  queue_size=1)
-
-        # rospy.Subscriber("mavros/imu/data",
-        #                  Imu,
-        #                  self.imu_callback,
-        #                  queue_size=1)
-
+        # for debugging purposes:
+        # self.est_pose_ned_pub = rospy.Publisher('est_pose_ned',
+        #                                         PoseStamped,
+        #                                         queue_size=1)
+        rospy.Subscriber("mavros/local_position/pose",
+                         PoseStamped,
+                         self.orientation_callback,
+                         queue_size=1)
+        rospy.Subscriber("mavros/imu/data",
+                         Imu,
+                         self.imu_callback,
+                         queue_size=1)
         rospy.Subscriber("tag_detections",
                          AprilTagDetectionArray,
                          self.apriltag_callback,
@@ -105,10 +122,10 @@ class EKFNode(Node):
                     # TODO "calibration"
 
                     # look up transform camera_frame to base_link
-                    transform = self.tf_buffer.lookup_transform(
-                        'uuv00/base_link', 'uuv00/camera_frame', rospy.Time(0),
-                        rospy.Duration(0.0))
+                    transform = self.tf_helper.\
+                        get_camera_frame_to_base_link_tf()
 
+                    # transform measurement from camera frame to base link
                     tag_pose_in_base_link = tf2_geometry_msgs.do_transform_pose(
                         tag.pose.pose, transform)
 
@@ -129,10 +146,9 @@ class EKFNode(Node):
                     # in tag frame, which has same orientation as map frame
                     orientation = tf.transformations.quaternion_inverse(
                         orientation)
+                    # print('quat from tag: ', tag_id, ': ', orientation)
                     roll, pitch, yaw = tf.transformations.euler_from_quaternion(
                         orientation)
-                    # print('angle from tag ', tag_id, ': ', roll, ', ', pitch,
-                    #       ', ', yaw)
 
                     # measurement 1: distance tag - base_link
                     measurements[self.ekf.dim_meas * i,
@@ -141,59 +157,68 @@ class EKFNode(Node):
                     measurements[self.ekf.dim_meas * i + 1, 0] = yaw
 
             elif self.meas_model_type == "full_pose":
-                # TODO
-                pass
+                rospy.logerr(
+                    "[{}] Measurement model: using full pose measurement. \
+                    Not implemented yet!".format(rospy.get_name()))
+                exit(-1)
 
-            # print(measurements)
-
-            # do prediction + update step of ekf
+            # do prediction + update step of EKF
             with self.lock:
-                # print("apriltag update at time ", rospy.get_time())
-                # print('ekf last state before predict: ',
-                #   self.ekf.get_x_est_last())
-
-                # print('ekf state in callback: ', self.ekf.get_x_est())
+                # print('ekf state before predict:')
+                # print(self.ekf.get_x_est())
                 now = rospy.get_time()
                 self.ekf.predict(now - self.t_last_prediction)
-
+                # print('ekf state after predict:')
+                # print(self.ekf.get_x_est())
                 self.t_last_prediction = now
-                # print('ekf last state before update: ',
-                #   self.ekf.get_x_est_last())
                 self.ekf.update_vision_data(measurements, detected_tags)
-                # print("apriltag update finished at time ", rospy.get_time())
-                # print('ekf state after update: ', self.ekf.get_x_est())
+                # print('ekf state after update:')
+                # print(self.ekf.get_x_est())
 
+            # we publish pose estimation only in apriltag callback
             self._publish_pose_estimation()
-            # self._publish_twist_estimation()
-            # self._publish_ekf_states()
+
+            # publishing for debugging:
+            self._publish_ekf_states()
 
         # no tags seen
         else:
             # could do only prediction here
-            # probably not necessary, due to high frequent updates
-            # of orientation and angular velocities
-            pass
+            # probably not necessary, due to high frequent predictions + updates
+            # in callback of orientation and angular velocities
+            # with self.lock:
+            #     now = rospy.get_time()
+            #     self.ekf.predict(now - self.t_last_prediction)
+            #     self.t_last_prediction = now
+
+            # we publish pose estimation only in apriltag callback since
+            # high frequent publishing from IMU or mavros/local_position/pose
+            # callback leads to PX4 yaw drift -> unclear why
+            # todo: add publisher at constant rate?
+            self._publish_pose_estimation()
+
+            # publishing for debugging:
+            self._publish_ekf_states()
 
     def orientation_callback(self, pose_msg):
-
+        # measurement is: roll, pitch from /mavros/local_position/pose
         orientation = [
             pose_msg.pose.orientation.x, pose_msg.pose.orientation.y,
             pose_msg.pose.orientation.z, pose_msg.pose.orientation.w
         ]
         roll, pitch, yaw = tf.transformations.euler_from_quaternion(orientation)
-        # print('px4 yaw: ', yaw)
         measurements = np.array([roll, pitch]).reshape((-1, 1))
 
+        # do prediction + update step of EKF
         with self.lock:
-            # print("orientation update at time ", rospy.get_time())
             now = rospy.get_time()
             self.ekf.predict(now - self.t_last_prediction)
             self.t_last_prediction = now
             self.ekf.update_orientation_data(measurements)
-            # print("orientation update finished at time ", rospy.get_time())
 
     def imu_callback(self, imu_msg):
-
+        # measurement is either: body rates + lin. acceleration
+        #                    or: only body rates
         angular_vel = np.array([
             imu_msg.angular_velocity.x, imu_msg.angular_velocity.y,
             imu_msg.angular_velocity.z
@@ -204,6 +229,7 @@ class EKFNode(Node):
         #     imu_msg.linear_acceleration.z
         # ])
         # measurements = np.array([angular_vel, linear_acc]).reshape((-1, 1))
+
         # # covariances
         # angular_vel_cov = np.asarray(
         #     imu_msg.angular_velocity_covariance).reshape((3, 3))
@@ -214,24 +240,22 @@ class EKFNode(Node):
         #                        np.zeros((3, 3))],
         #                       [np.zeros((3, 3)), linear_acc_cov]])
 
-        # for now, only using body rates
+        # for now, only using angular body rates
         measurements = np.array([angular_vel]).reshape((-1, 1))
         w_mat_imu = np.asarray(imu_msg.angular_velocity_covariance).reshape(
             (3, 3))
 
+        # do prediction and update step of EKF
         with self.lock:
-            # print("imu update at time ", rospy.get_time())
             now = rospy.get_time()
             self.ekf.predict(now - self.t_last_prediction)
             self.t_last_prediction = now
             self.ekf.update_imu_data(measurements, w_mat_imu)
-            # print("imu update finished at time ", rospy.get_time())
-
-        # self._publish_pose_estimation()
-        # self._publish_twist_estimation()
 
     def _publish_pose_estimation(self):
-        estimation = np.copy(self.ekf.get_x_est())
+
+        with self.lock:
+            estimation = self.ekf.get_x_est()
 
         position = estimation[:3]
         roll = estimation[3]
@@ -250,31 +274,31 @@ class EKFNode(Node):
         p.header.frame_id = "map"
         self.vision_pose_pub.publish(p)
 
+        # # debugging
+        # estimation = self.ekf.get_x_est()
+        # roll = estimation[3]
+        # pitch = estimation[4]
+        # yaw = estimation[5]
+        # print('Euler Angles ekf states: ', roll, pitch, yaw)
+        # print('rotation matrix from map -> body: ',
+        #       tf.transformations.euler_matrix(roll, pitch, yaw)[:3, :3])
+        # print(
+        #     'Inverse of rotation matrix: ',
+        #     tf.transformations.inverse_matrix(
+        #         tf.transformations.euler_matrix(roll, pitch, yaw))[:3, :3])
+
         # # publish estimated pose in NED as well -> for debugging
         # transform_to_ned = self.tf_buffer.lookup_transform(
         #     'map_ned', 'map', rospy.Time(0), rospy.Duration(0.0))
         # p_ned = tf2_geometry_msgs.do_transform_pose(p, transform_to_ned)
         # self.est_pose_ned_pub.publish(p_ned)
 
-    def _publish_twist_estimation(self):
-        estimation = self.ekf.get_x_est()
-
-        t = TwistStamped()
-        t.twist.linear.x = estimation[6]
-        t.twist.linear.y = estimation[7]
-        t.twist.linear.z = estimation[8]
-        t.twist.angular.x = estimation[9]
-        t.twist.angular.y = estimation[10]
-        t.twist.angular.z = estimation[11]
-        t.header.stamp = rospy.Time.now()
-        # todo: frame id -> body
-        self.twist_pub.publish(t)
-
     def _publish_ekf_states(self):
         # publish states as ROS msg
-        # for debugging only!
+        # for debugging only
+        with self.lock:
+            ekf_state = self.ekf.get_x_est()
 
-        ekf_state = self.ekf.get_x_est()
         quat = tf.transformations.quaternion_from_euler(ekf_state[3],
                                                         ekf_state[4],
                                                         ekf_state[5])
@@ -298,7 +322,7 @@ class EKFNode(Node):
         t.twist.angular.y = ekf_state[10]
         t.twist.angular.z = ekf_state[11]
         t.header.stamp = rospy.Time.now()
-        # t.header.frame_id = "uuv00/base_link"
+        t.header.frame_id = self._base_link_id
         self.ekf_twist_pub.publish(t)
 
     def _load_ekf_params_dist(self):
@@ -395,35 +419,11 @@ class EKFNode(Node):
         tags = np.zeros((len(tag_poses), 8))
 
         for tag in tag_poses:
-            # doesn't work with frame_id "map_ned" yet todo
-            # to transform to map frame: write as ROS msg
-            # gibt sicherlich auch direkteren weg
-            # p = PoseStamped()
-            # p.header.frame_id = str(tag['frame_id'])
-            # p.pose.position.x = tag['x']
-            # p.pose.position.y = tag['y']
-            # p.pose.position.z = tag['z']
-            # p.pose.orientation.x = tag['qx']
-            # p.pose.orientation.y = tag['qy']
-            # p.pose.orientation.z = tag['qz']
-            # p.pose.orientation.w = tag['qw']
-            # tag_pose_map = self.tf_transformer.transformPose(target_frame="map",
-            #                                                  ps=p)
-
-            # tags[tag['id'], :] = np.array([
-            #     tag['id'], tag_pose_map.pose.position.x,
-            #     tag_pose_map.pose.position.y, tag_pose_map.pose.position.z,
-            #     tag_pose_map.pose.orientation.w,
-            #     tag_pose_map.pose.orientation.x,
-            #     tag_pose_map.pose.orientation.y, tag_pose_map.pose.orientation.z
-            # ])
-
-            # not transforming tags for now
+            # assuming tag pose is in map frame for now
             tags[tag['id'], :] = np.array([
                 tag['id'], tag['x'], tag['y'], tag['z'], tag['qx'], tag['qy'],
                 tag['qz'], tag['qw']
             ])
-
         return tags
 
 
