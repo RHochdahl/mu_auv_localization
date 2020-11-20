@@ -13,7 +13,8 @@ from mu_auv_localization.meas_model_class import MeasurementModelDistances
 from mu_auv_localization.process_model_class import ProcessModel, \
     ProcessModelVelocities
 
-from geometry_msgs.msg import PoseStamped, TwistStamped
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, \
+    TwistWithCovarianceStamped
 from apriltag_ros.msg import AprilTagDetectionArray
 from sensor_msgs.msg import Imu
 import threading
@@ -32,6 +33,7 @@ class EKFNode(Node):
         self.tf_helper = TfHelper()
         self.tf_buffer = tf2_ros.Buffer()
         self._base_link_id = self.tf_helper.get_base_link_id()
+        self.publish_ekf_states = rospy.get_param('~publish_ekf_states', 'True')
 
         self.tags = self._load_tag_poses()
 
@@ -74,19 +76,16 @@ class EKFNode(Node):
                                         process_model, x0, p0_mat)
 
         # publishers and subscribers
-        self.vision_pose_pub = rospy.Publisher("mavros/vision_pose/pose",
-                                               PoseStamped,
+        self.vision_pose_pub = rospy.Publisher("mavros/vision_pose/pose_cov",
+                                               PoseWithCovarianceStamped,
                                                queue_size=1)
-        self.ekf_pose_pub = rospy.Publisher("ekf_pose",
-                                            PoseStamped,
-                                            queue_size=1)
-        self.ekf_twist_pub = rospy.Publisher("ekf_twist",
-                                             TwistStamped,
-                                             queue_size=1)
-        # for debugging purposes:
-        # self.est_pose_ned_pub = rospy.Publisher('est_pose_ned',
-        #                                         PoseStamped,
-        #                                         queue_size=1)
+        if self.publish_ekf_states:
+            self.ekf_pose_pub = rospy.Publisher("ekf_pose",
+                                                PoseWithCovarianceStamped,
+                                                queue_size=1)
+            self.ekf_twist_pub = rospy.Publisher("ekf_twist",
+                                                 TwistWithCovarianceStamped,
+                                                 queue_size=1)
         rospy.Subscriber("mavros/local_position/pose",
                          PoseStamped,
                          self.orientation_callback,
@@ -121,32 +120,27 @@ class EKFNode(Node):
 
                     # TODO "calibration"
 
-                    # look up transform camera_frame to base_link
+                    # tranform tag pose
                     transform = self.tf_helper.\
                         get_camera_frame_to_base_link_tf()
-
-                    # transform measurement from camera frame to base link
                     tag_pose_in_base_link = tf2_geometry_msgs.do_transform_pose(
                         tag.pose.pose, transform)
-
                     position_tag_in_base_link = np.array([
                         tag_pose_in_base_link.pose.position.x,
                         tag_pose_in_base_link.pose.position.y,
                         tag_pose_in_base_link.pose.position.z
                     ]).reshape(-1, 1)
-
-                    # orientation of tag in base_link frame
                     orientation = [
                         tag_pose_in_base_link.pose.orientation.x,
                         tag_pose_in_base_link.pose.orientation.y,
                         tag_pose_in_base_link.pose.orientation.z,
                         tag_pose_in_base_link.pose.orientation.w
                     ]
+
                     # inverse quaternion to get base_link orientation
                     # in tag frame, which has same orientation as map frame
                     orientation = tf.transformations.quaternion_inverse(
                         orientation)
-                    # print('quat from tag: ', tag_id, ': ', orientation)
                     roll, pitch, yaw = tf.transformations.euler_from_quaternion(
                         orientation)
 
@@ -164,41 +158,17 @@ class EKFNode(Node):
 
             # do prediction + update step of EKF
             with self.lock:
-                # print('ekf state before predict:')
-                # print(self.ekf.get_x_est())
                 now = rospy.get_time()
                 self.ekf.predict(now - self.t_last_prediction)
-                # print('ekf state after predict:')
-                # print(self.ekf.get_x_est())
                 self.t_last_prediction = now
                 self.ekf.update_vision_data(measurements, detected_tags)
-                # print('ekf state after update:')
-                # print(self.ekf.get_x_est())
-
-            # we publish pose estimation only in apriltag callback
-            self._publish_pose_estimation()
-
-            # publishing for debugging:
-            self._publish_ekf_states()
 
         # no tags seen
         else:
             # could do only prediction here
             # probably not necessary, due to high frequent predictions + updates
             # in callback of orientation and angular velocities
-            # with self.lock:
-            #     now = rospy.get_time()
-            #     self.ekf.predict(now - self.t_last_prediction)
-            #     self.t_last_prediction = now
-
-            # we publish pose estimation only in apriltag callback since
-            # high frequent publishing from IMU or mavros/local_position/pose
-            # callback leads to PX4 yaw drift -> unclear why
-            # todo: add publisher at constant rate?
-            self._publish_pose_estimation()
-
-            # publishing for debugging:
-            self._publish_ekf_states()
+            pass
 
     def orientation_callback(self, pose_msg):
         # measurement is: roll, pitch from /mavros/local_position/pose
@@ -256,22 +226,27 @@ class EKFNode(Node):
 
         with self.lock:
             estimation = self.ekf.get_x_est()
+            cov = self.ekf.get_p_mat()[:6, :6]
+            # print('cov: ', cov)
 
         position = estimation[:3]
         roll = estimation[3]
         pitch = estimation[4]
         yaw = estimation[5]
         quat = tf.transformations.quaternion_from_euler(roll, pitch, yaw)
-        p = PoseStamped()
-        p.pose.position.x = position[0]
-        p.pose.position.y = position[1]
-        p.pose.position.z = position[2]
-        p.pose.orientation.x = quat[0]
-        p.pose.orientation.y = quat[1]
-        p.pose.orientation.z = quat[2]
-        p.pose.orientation.w = quat[3]
+
+        p = PoseWithCovarianceStamped()
+        p.pose.pose.position.x = position[0]
+        p.pose.pose.position.y = position[1]
+        p.pose.pose.position.z = position[2]
+        p.pose.pose.orientation.x = quat[0]
+        p.pose.pose.orientation.y = quat[1]
+        p.pose.pose.orientation.z = quat[2]
+        p.pose.pose.orientation.w = quat[3]
+        p.pose.covariance = np.ndarray.tolist(np.ndarray.flatten(cov))
         p.header.stamp = rospy.Time.now()
         p.header.frame_id = "map"
+
         self.vision_pose_pub.publish(p)
 
         # # debugging
@@ -287,40 +262,38 @@ class EKFNode(Node):
         #     tf.transformations.inverse_matrix(
         #         tf.transformations.euler_matrix(roll, pitch, yaw))[:3, :3])
 
-        # # publish estimated pose in NED as well -> for debugging
-        # transform_to_ned = self.tf_buffer.lookup_transform(
-        #     'map_ned', 'map', rospy.Time(0), rospy.Duration(0.0))
-        # p_ned = tf2_geometry_msgs.do_transform_pose(p, transform_to_ned)
-        # self.est_pose_ned_pub.publish(p_ned)
-
     def _publish_ekf_states(self):
-        # publish states as ROS msg
-        # for debugging only
+
         with self.lock:
             ekf_state = self.ekf.get_x_est()
+            cov = self.ekf.get_p_mat()
+            cov_pose = cov[:6, :6]
+            cov_twist = cov[6:, 6:]
 
         quat = tf.transformations.quaternion_from_euler(ekf_state[3],
                                                         ekf_state[4],
                                                         ekf_state[5])
-        p = PoseStamped()
-        p.pose.position.x = ekf_state[0]
-        p.pose.position.y = ekf_state[1]
-        p.pose.position.z = ekf_state[2]
-        p.pose.orientation.x = quat[0]
-        p.pose.orientation.y = quat[1]
-        p.pose.orientation.z = quat[2]
-        p.pose.orientation.w = quat[3]
+        p = PoseWithCovarianceStamped()
+        p.pose.pose.position.x = ekf_state[0]
+        p.pose.pose.position.y = ekf_state[1]
+        p.pose.pose.position.z = ekf_state[2]
+        p.pose.pose.orientation.x = quat[0]
+        p.pose.pose.orientation.y = quat[1]
+        p.pose.pose.orientation.z = quat[2]
+        p.pose.pose.orientation.w = quat[3]
+        p.pose.covariance = np.ndarray.tolist(np.ndarray.flatten(cov_pose))
         p.header.stamp = rospy.Time.now()
         p.header.frame_id = "map"
         self.ekf_pose_pub.publish(p)
 
-        t = TwistStamped()
-        t.twist.linear.x = ekf_state[6]
-        t.twist.linear.y = ekf_state[7]
-        t.twist.linear.z = ekf_state[8]
-        t.twist.angular.x = ekf_state[9]
-        t.twist.angular.y = ekf_state[10]
-        t.twist.angular.z = ekf_state[11]
+        t = TwistWithCovarianceStamped()
+        t.twist.twist.linear.x = ekf_state[6]
+        t.twist.twist.linear.y = ekf_state[7]
+        t.twist.twist.linear.z = ekf_state[8]
+        t.twist.twist.angular.x = ekf_state[9]
+        t.twist.twist.angular.y = ekf_state[10]
+        t.twist.twist.angular.z = ekf_state[11]
+        t.twist.covariance = np.ndarray.tolist(np.ndarray.flatten(cov_twist))
         t.header.stamp = rospy.Time.now()
         t.header.frame_id = self._base_link_id
         self.ekf_twist_pub.publish(t)
@@ -425,6 +398,15 @@ class EKFNode(Node):
                 tag['qz'], tag['qw']
             ])
         return tags
+
+    def run(self):
+        rate = rospy.Rate(30.0)
+        while not rospy.is_shutdown():
+            self._publish_pose_estimation()
+            if self.publish_ekf_states:
+                self._publish_ekf_states()
+            rate.sleep()
+        rospy.loginfo("[{}] Shutting down...".format(rospy.get_name()))
 
 
 def main():
