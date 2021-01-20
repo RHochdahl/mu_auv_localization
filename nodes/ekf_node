@@ -7,16 +7,20 @@ import rospy
 import tf
 
 from geometry_msgs.msg import Pose, PoseArray, PoseStamped, TwistStamped
+from nav_msgs.msg import Odometry
 from apriltag_ros.msg import AprilTagDetectionArray
 from apriltag_ros.msg import AprilTagDetection
 from visualization_msgs.msg import Marker, MarkerArray
-from sensor_msgs.msg import Imu
+from sensor_msgs.msg import Imu, FluidPressure
 from mavros_msgs.srv import SetMode
 from numpy import genfromtxt
 import os
-cam_reversed = False
+cam_transform = np.array([[0.0, 0.0, 1.0],
+                          [0.0, 1.0, 0.0],
+                          [-1.0, 0.0, 0.0]])
 # NUM_P = 100
 state_dim = 3  # x, y, z
+max_dist_to_tag = 3
 # x_range = (0, 3)
 # y_range = (0, 2)
 # z_range = (0, 1.5)
@@ -53,8 +57,7 @@ def callback_imu(msg, tmp_list):
     estimated_orientation = ekf.yaw_pitch_roll_to_quat(-(old_yaw - np.pi / 2),
                                                        0, 0)
     # [mm]
-    x_mean_ned = estimated_position[
-        0] * 1000  # global Tank Koordinate System(NED)
+    x_mean_ned = estimated_position[0] * 1000  # global Tank Koordinate System(NED)
     y_mean_ned = estimated_position[1] * 1000
     z_mean_ned = estimated_position[2] * 1000
 
@@ -71,7 +74,7 @@ def callback_imu(msg, tmp_list):
     mavros_position.pose.orientation.x = estimated_orientation.x
     mavros_position.pose.orientation.y = estimated_orientation.y
     mavros_position.pose.orientation.z = estimated_orientation.z
-    #publisher_mavros.publish(mavros_position)  # oublish to boat
+    #publisher_mavros.publish(mavros_position)  # publish to boat
 
     # publish estimated_pose [m]
     position = PoseStamped()
@@ -90,14 +93,9 @@ def callback_imu(msg, tmp_list):
     msg_twist = TwistStamped()
     msg_twist.header.stamp = rospy.Time.now()
     msg_twist.header.frame_id = "global_tank"  # ned
-    tmp = ekf.yaw_pitch_roll_to_quat(ekf.get_yaw_current(),
-                                     ekf.get_pitch_current(),
-                                     ekf.get_roll_current()).rotate(
-                                         np.asarray([[estimated_position[3]],
-                                                     [0], [0]]))
-    msg_twist.twist.linear.x = tmp[0]
-    msg_twist.twist.linear.y = tmp[1]
-    msg_twist.twist.linear.z = -tmp[2]
+    msg_twist.twist.linear.x = estimated_position[3]
+    msg_twist.twist.linear.y = estimated_position[4]
+    msg_twist.twist.linear.z = estimated_position[5]
     publisher_twist.publish(msg_twist)
 
 
@@ -114,69 +112,52 @@ def callback_orientation(msg, ekf):
     ekf.current_rotation(yaw_current, pitch_current, roll_current)
 
 
-#number_of_unseen_tags = 0
+def callback_pressure(msg, ekf):
+    measurement = msg.fluid_pressure
+    ekf.update_pressure(measurement)
 
 
 def callback(msg, tmp_list):
     """"""
-    global old_yaw, number_of_unseen_tags, cam_reversed
+    global old_yaw, number_of_unseen_tags, last_tag_detected, cam_transform
     [
         ekf, publisher_position, publisher_mavros, broadcaster,
-        publisher_marker, publisher_twist
+        publisher_marker, publisher_twist, publisher_state
     ] = tmp_list
 
     # get length of message
     num_meas = len(msg.detections)
-    orientation_yaw_pitch_roll = np.zeros((num_meas, 3))
 
     if num_meas >= 1:
-        measurements = np.zeros((num_meas, 1 + state_dim))
+        orientation_yaw_pitch_roll = np.zeros((num_meas, 3))
+        measurements = np.empty([0, 4])
         for i, tag in enumerate(msg.detections):
             tag_id = int(tag.id[0])
-            if cam_reversed:
-                tag_distance_cam = np.array(
-                    ([
-                        -tag.pose.pose.pose.position.x * 1.05,
-                        -tag.pose.pose.pose.position.y * 1.1,
-                        tag.pose.pose.pose.position.z
-                    ])
-                )  # Achtung hier ist die 0.1 wegen der kamera position hinzugefuegt
+            tag_distance_cam = np.matmul(cam_transform, np.array([[tag.pose.pose.pose.position.x], [tag.pose.pose.pose.position.y], [tag.pose.pose.pose.position.z]]))
 
-            else:
-                tag_distance_cam = np.array(
-                    ([
-                        tag.pose.pose.pose.position.x * 1.05,
-                        tag.pose.pose.pose.position.y * 1.1,
-                        tag.pose.pose.pose.position.z
-                    ])
-                )  # Achtung hier ist die 0.1 wegen der kamera position hinzugefuegt
-
-            measurements[i, 0] = np.linalg.norm(tag_distance_cam)
+            dist = np.linalg.norm(tag_distance_cam)
             tmpquat = Quaternion(w=tag.pose.pose.pose.orientation.w,
                                  x=tag.pose.pose.pose.orientation.x,
                                  y=tag.pose.pose.pose.orientation.y,
                                  z=tag.pose.pose.pose.orientation.z)
 
             orientation_yaw_pitch_roll[i, :] = tmpquat.inverse.yaw_pitch_roll
-            index = np.where(tags[:, 0] == tag_id)
 
-            measurements[i, 1:4] = tags[index, 1:4]
+            if dist <= max_dist_to_tag:
+                index = np.where(tags[:, 0] == tag_id)
+                measurements = np.append(measurements, np.array([[dist, tags[index, 1:4]]]), axis=0)
         # ekf update step
-        ekf.update(measurements)
-        #if number_of_unseen_tags > 0 and num_meas > 2:
-        #    for i in range(number_of_unseen_tags):
-        #        ekf.update(measurements)
-        #    number_of_unseen_tags = 0
+        ekf.update_tags(measurements)
 
         yaw_list = np.asarray(orientation_yaw_pitch_roll[:, 0])
         yaw = np.arctan2(np.mean(np.sin(yaw_list)), np.mean(np.cos(yaw_list)))
-        if cam_reversed:
-            yaw = yaw+np.pi
-        #print('yaw',yaw)
-        pitch = np.mean(orientation_yaw_pitch_roll[:, 1])
-        roll = np.mean(orientation_yaw_pitch_roll[:, 2])
+        # print('yaw',yaw)
+        # pitch = np.mean(orientation_yaw_pitch_roll[:, 1])
+        # roll = np.mean(orientation_yaw_pitch_roll[:, 2])
+        last_tag_detected = rospy.get_time()
     else:
-        #number_of_unseen_tags = number_of_unseen_tags + 1
+        # number_of_unseen_tags = number_of_unseen_tags + 1
+        rospy.logwarn_throttle(10.0, "\nNo Tags detected for " + str(rospy.get_time()-last_tag_detected) + "s!")
         ekf.update_velocity_if_nothing_is_seen()
         yaw = old_yaw
     old_yaw = yaw
@@ -186,8 +167,7 @@ def callback(msg, tmp_list):
     estimated_position = ekf.get_x_est()
 
     # [mm]
-    x_mean_ned = estimated_position[
-        0] * 1000  # global Tank Koordinate System(NED)
+    x_mean_ned = estimated_position[0] * 1000  # global Tank Koordinate System(NED)
     y_mean_ned = estimated_position[1] * 1000
     z_mean_ned = estimated_position[2] * 1000
     mavros_position = PoseStamped()
@@ -200,11 +180,34 @@ def callback(msg, tmp_list):
     mavros_position.pose.orientation.x = estimated_orientation.x
     mavros_position.pose.orientation.y = estimated_orientation.y
     mavros_position.pose.orientation.z = estimated_orientation.z
-    publisher_mavros.publish(mavros_position)  # oublish to boat
+    publisher_mavros.publish(mavros_position)  # publish to boat
+
+    state_msg = Odometry()
+    state_msg.header.stamp = rospy.Time.now()
+    state_msg.header.frame_id = 'map'
+    state_msg.child_frame_id = 'map'
+    state_msg.pose.pose.position.x = estimated_position[0]
+    state_msg.pose.pose.position.y = estimated_position[1]
+    state_msg.pose.pose.position.z = estimated_position[2]
+    state_msg.pose.pose.orientation.w = estimated_orientation.w
+    state_msg.pose.pose.orientation.x = estimated_orientation.x
+    state_msg.pose.pose.orientation.y = estimated_orientation.y
+    state_msg.pose.pose.orientation.z = estimated_orientation.z
+    # state_msg.pose.covariance[0] = self.sigma[0, 0]
+    # state_msg.pose.covariance[7] = self.sigma[1, 1]
+    # state_msg.pose.covariance[14] = self.sigma[2, 2]
+    state_msg.twist.twist.linear.x = estimated_position[3]  # self.linear_velocity[0]
+    state_msg.twist.twist.linear.y = estimated_position[4]  # self.linear_velocity[1]
+    state_msg.twist.twist.linear.z = estimated_position[5]  # self.linear_velocity[2]
+    # state_msg.twist.twist.angular.x = self.angular_velocity[0]
+    # state_msg.twist.twist.angular.y = self.angular_velocity[1]
+    # state_msg.twist.twist.angular.z = self.angular_velocity[2]
+    # state_msg.pose.pose.orientation = self.orientation
+    publisher_state.publish(state_msg)
 
 
 def main():
-    global tags, cam_reversed
+    global tags, cam_reversed, last_tag_detected
     rospy.init_node('ekf_node')
     try:
         which_calibration = rospy.get_param('~calibration')
@@ -236,8 +239,13 @@ def main():
     tags = tags[:, 0:4]
     tags[:, 3] += 0.0
 
+    last_tag_detected = rospy.get_time()
+
     ekf = ekf_class.ExtendedKalmanFilter()
 
+    publisher_state = rospy.Publisher("estimated_state", 
+                                      Odometry,
+                                      queue_size=1)
     publisher_position = rospy.Publisher('estimated_pose',
                                          PoseStamped,
                                          queue_size=1)
@@ -255,7 +263,7 @@ def main():
                      AprilTagDetectionArray,
                      callback, [
                          ekf, publisher_position, publisher_mavros, broadcaster,
-                         publisher_marker, publisher_twist
+                         publisher_marker, publisher_twist, publisher_state
                      ],
                      queue_size=1)
     rospy.Subscriber("mavros/imu/data",
@@ -264,6 +272,11 @@ def main():
                          ekf, publisher_position, publisher_mavros, broadcaster,
                          publisher_marker, publisher_twist
                      ],
+                     queue_size=1)
+    rospy.Subscriber("pressure",
+                     FluidPressure,
+                     callback_pressure,
+                     ekf,
                      queue_size=1)
     rospy.Subscriber("pose_px4",
                      PoseStamped,
