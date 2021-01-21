@@ -11,22 +11,25 @@ EKF state: [x, y, z, roll, pitch, yaw, dx, dy, dz, droll, dpitch, dyaw]
 
 
 class MeasurementModelDistances(object):
-    def __init__(self, dim_state, dim_meas, w_mat_vision, c_penalty_dist,
-                 c_penalty_yaw, w_mat_orientation):
+    def __init__(self, dim_state, dim_meas, w_mat_vision,
+                 var_dist_vision_factor, c_penalty_dist, c_penalty_yaw,
+                 w_mat_orientation, var_press, sat_press, var_vel):
         self._dim_state = dim_state
         self._dim_meas = dim_meas
         self._w_mat_vision_static = w_mat_vision
+        self.var_dist_vision_factor = var_dist_vision_factor
         self._c_penalty_dist = c_penalty_dist
         self._c_penalty_yaw = c_penalty_yaw
         self.w_mat_orientation = w_mat_orientation
+        self.var_press = var_press
+        self.sat_press = sat_press
+        self.var_vel = var_vel
 
     def h_vision_data(self, x_est, detected_tags):
         # measurement is: distance and yaw-angle to each tag
         num_tags = detected_tags.shape[0]
         self.z_est_vision = np.zeros((num_tags * self._dim_meas, 1))
         self.h_mat_vision = np.zeros((num_tags * self._dim_meas, self._dim_state))
-
-        rospy.loginfo("\ndetected_tags: " + str(detected_tags))
 
         for i, tag in enumerate(detected_tags):
             tag_pos = tag[1:4]
@@ -53,6 +56,12 @@ class MeasurementModelDistances(object):
 
     def h_jacobian_vision_data(self):
         return self.h_mat_vision
+
+    def h_jacobian_vel_data(self):
+        h_mat_vel = np.zeros((3, self._dim_state))
+        for i in range(3):
+            h_mat_vel[i, 6+i] = 1.0
+        return h_mat_vel
 
     def h_orientation_data(self, x_est):
         # measurement is: roll, pitch from /mavros/local_position/pose
@@ -111,13 +120,34 @@ class MeasurementModelDistances(object):
 
             # debugging: not dynamic
             # noise for distance measurement
-            w_mat_dyn[self._dim_meas * i,
-                      self._dim_meas * i] = self._w_mat_vision_static[0, 0]
+            w_mat_dyn[self._dim_meas * i, self._dim_meas * i] = self._w_mat_vision_static[0, 0] + self.var_dist_vision_factor * self.z_est_vision[i * self._dim_meas, 0]
             # noise for yaw measurement
             w_mat_dyn[self._dim_meas * i + 1,
                       self._dim_meas * i + 1] = self._w_mat_vision_static[1, 1]
 
         return w_mat_dyn  # dim [num_tags*dim_meas X num_tag*dim_meas]
+
+    def w_mat_vel_data(self, detected_tags, delta_t):
+        num_tags = detected_tags.shape[0]
+        w_mat_vel = np.zeros((3, 3))
+        for i in range(3):
+            w_mat_vel[i, i] = self.var_vel[i, i] / (num_tags*delta_t)
+        return w_mat_vel
+
+    def h_pressure_data(self, x_est):
+        # g*rho = 9.78057e3
+        self.z_est_pressure = np.array([-x_est[8]*9.78057e3]).reshape((-1, 1))
+
+        self.h_mat_pressure = np.zeros((1, self._dim_state))
+        self.h_mat_pressure[0, 8] = -9.78057e3
+
+        return self.z_est_pressure
+
+    def h_jacobian_pressure_data(self):
+        return self.h_mat_pressure
+
+    def w_mat_pressure_data(self, delta_t):
+        return np.array([self.var_press / delta_t]).reshape((-1, 1))
 
     def get_dist(self, x_est, tag_pos):
         # dist = sqrt((x - x_tag) ^ 2 + (y - y_tag) ^ 2 + (z - z_tag) ^ 2)

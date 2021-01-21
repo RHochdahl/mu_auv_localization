@@ -60,6 +60,10 @@ ekf: {
                         },
                 # ORIENTATION: measurement noise covariance W parameters
                 w_mat_orient: { sig_w_roll: 0.1, sig_w_pitch: 0.1 },
+                # PESSURE SENSOR: measurement noise of pressure sensor
+                press: {sig_press: 10.0, sat: 200.0},
+                # VELOCITY ESTIMATION
+                vel: {sig_x: 1.0, sig_y: 1.0, sig_z: 0.5},
         }
 # add more
 

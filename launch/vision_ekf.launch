@@ -1,7 +1,7 @@
 <launch>
     <arg name="vehicle_name" default="bluerov" doc="Something like 'uuv04' or 'bluerov.'" />
 
-    <arg name="camera_name" doc="Used as prefix for the tag detections and for correctly resolving the camera transformations. Typically either 'vertical_camera' or 'front_camera'" />
+    <arg name="camera_name" default="ov9281_00" doc="Used as prefix for the tag detections and for correctly resolving the camera transformations. Typically either 'vertical_camera' or 'front_camera'" />
     <arg name="april_tag_suffix" default="" />
     
     <arg name="process_model" default="simple" />

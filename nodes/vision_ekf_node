@@ -15,7 +15,7 @@ from mu_auv_localization.process_model_class import ProcessModel, \
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, \
     TwistWithCovarianceStamped
 from apriltag_ros.msg import AprilTagDetectionArray
-from sensor_msgs.msg import Imu
+from sensor_msgs.msg import Imu, FluidPressure
 import threading
 
 # numpy printing options
@@ -30,14 +30,14 @@ class EKFNode(Node):
         self.t_last_prediction = rospy.get_time()
 
         # get parameters
-        self.camera_name = rospy.get_param("~camera_name", "vertical_camera")
-        self.april_tag_suffix = rospy.get_param("~april_tag_suffix", "")
-        self.publish_ekf_states = rospy.get_param("~publish_ekf_states", "True")
-        self.meas_model_type = rospy.get_param("~measurement_model", "dist")
-        self.process_model_type = rospy.get_param("~process_model", "simple")
+        self.camera_name = self.get_param("~camera_name", "vertical_camera")
+        self.april_tag_suffix = self.get_param("~april_tag_suffix", "")
+        self.publish_ekf_states = self.get_param("~publish_ekf_states", "True")
+        self.meas_model_type = self.get_param("~measurement_model", "dist")
+        self.process_model_type = self.get_param("~process_model", "simple")
         self.tags = self._load_tag_poses()
 
-        vehicle_name = rospy.get_param("~vehicle_name")
+        vehicle_name = self.get_param("~vehicle_name")
         if vehicle_name is None:
             rospy.logfatal("[%s] No vehicle name specified! Exiting...",
                            rospy.get_name())
@@ -48,14 +48,14 @@ class EKFNode(Node):
         # choose measurement model
         if self.meas_model_type == "dist":
             # load parameters from param file for EKF using distance measurement
-            dim_state, dim_meas, w_mat, v_mat, p0_mat, x0, \
-                c_penalty_dist, c_penalty_yaw, w_mat_orient \
-                = self._load_ekf_params_dist()
+            dim_state, dim_meas, w_mat, var_factor, v_mat, p0_mat, x0, \
+                c_penalty_dist, c_penalty_yaw, w_mat_orient, var_press, \
+                sat_press, var_vel = self._load_ekf_params_dist()
 
             # initialize measurement model
             measurement_model = MeasurementModelDistances(
-                dim_state, dim_meas, w_mat, c_penalty_dist, c_penalty_yaw,
-                w_mat_orient)
+                dim_state, dim_meas, w_mat, var_factor, c_penalty_dist, \
+                c_penalty_yaw, w_mat_orient, var_press, sat_press, var_vel)
         else:
             rospy.logfatal("[{}] Choose valid measurement model.".format(
                 rospy.get_name()))
@@ -103,6 +103,10 @@ class EKFNode(Node):
                          AprilTagDetectionArray,
                          self.apriltag_callback,
                          queue_size=1)
+        rospy.Subscriber("pressure",
+                         FluidPressure,
+                         self.pressure_callback,
+                         queue_size=1)
 
     def apriltag_callback(self, tag_array_msg):
         num_tags = len(tag_array_msg.detections)
@@ -116,7 +120,7 @@ class EKFNode(Node):
                 measurements = np.zeros((num_tags * self.ekf.dim_meas, 1))
                 detected_tags = np.zeros((num_tags, 4))
 
-                rospy.loginfo("\ndetected_tags: " + str(tag_array_msg.detections))
+                # rospy.loginfo("\ndetected_tags: " + str(tag_array_msg.detections))
 
                 for i, tag in enumerate(tag_array_msg.detections):
                     tag_id = int(tag.id[0])
@@ -230,6 +234,15 @@ class EKFNode(Node):
             self.ekf.predict(now - self.t_last_prediction)
             self.t_last_prediction = now
             self.ekf.update_imu_data(measurements, w_mat_imu)
+
+    def pressure_callback(self, pressure_msg):
+        measurement = pressure_msg.fluid_pressure
+
+        with self.lock:
+            now = rospy.get_time()
+            self.ekf.predict(now - self.t_last_prediction)
+            self.t_last_prediction = now
+            self.ekf.update_pressure_data(measurement)
 
     def _publish_pose_estimation(self):
 
@@ -378,6 +391,7 @@ class EKFNode(Node):
         c_penalty_yaw = self.get_param("~ekf/w_mat/c_penalty_yaw")
 
         w_mat_vision = np.array(np.diag([sig_w_dist**2, sig_w_yaw**2]))
+        var_dist_vision_factor = 0.2 * sig_w_dist**2
 
         # measurement noise orientation
         # (using data from mavros/local_position/pose)
@@ -386,8 +400,18 @@ class EKFNode(Node):
 
         w_mat_orient = np.array(np.diag([sig_w_roll**2, sig_w_pitch**2]))
 
-        return dim_state, dim_meas, w_mat_vision, v_mat, p0_mat, x0, \
-            c_penalty_dist, c_penalty_yaw, w_mat_orient
+        var_press = self.get_param("~ekf/press/sig_press")**2
+        sat_press = self.get_param("~ekf/press/sat")
+
+        sig_x_vel = self.get_param("~ekf/vel/sig_x")
+        sig_y_vel = self.get_param("~ekf/vel/sig_y")
+        sig_z_vel = self.get_param("~ekf/vel/sig_z")
+
+        var_vel = np.array(np.diag([sig_x_vel**2, sig_y_vel**2, sig_z_vel**2]))
+
+        return dim_state, dim_meas, w_mat_vision, var_dist_vision_factor, \
+            v_mat, p0_mat, x0, c_penalty_dist, c_penalty_yaw, w_mat_orient, \
+            var_press, sat_press, var_vel
 
     def _load_tag_poses(self):
 

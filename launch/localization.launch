@@ -4,9 +4,10 @@
 
   <!-- arguments -->
   <arg name="vehicle_name" default="bluerov" doc="Something like 'uuv04' or 'bluerov.'" />
+  <arg name="vehicle_type" default="bluerov" doc="Either 'hippocampus' or 'bluerov'."/>
 
   <!-- camera/image processing specific-->
-  <arg name="camera_name" default="ov9281_00" doc="Typically 'vertical_camera'. Used as namespace for the AprilTag pipeline." />
+  <arg name="camera_name" default="vertical_camera" doc="Typically 'vertical_camera'. Used as namespace for the AprilTag pipeline." />
   <arg name="april_tag_suffix" default="_$(arg camera_name)" />
   <arg name="do_rectify" default="false" />
   <arg name="image_raw_topic" default="image_raw" />
@@ -15,7 +16,7 @@
   <!-- known tags for AprilTag algorithm  -->
   <arg name="less_tags" default="false" />
   <arg if="$(arg less_tags)" name="tag_file" value="$(find mu_auv_localization)/config/less_tags_standalone.yaml" />
-  <arg unless="$(arg less_tags)" name="tag_file" value="$(find mu_auv_localization)/config/all_tags_standalone.yaml" />
+  <arg unless="$(arg less_tags)" name="tag_file" value="$(find mu_auv_localization)/config/tags_standalone.yaml" />
 
   <!-- EKF specific -->
   <arg name="process_model" default="simple" />
@@ -35,6 +36,12 @@
       <param name="publish_tag_detections_image" value="true"/>
   </node>
 
+  <!-- start tf publisher -->
+  <include file="$(find hippocampus_common)/launch/tf_publisher.launch">
+    <arg name="vehicle_name" value="$(arg vehicle_name)" />
+    <arg name="vehicle_type" value="$(arg vehicle_type)" />
+  </include>
+
   <!-- start EKF -->
   <include file="$(find mu_auv_localization)/launch/vision_ekf.launch">
     <arg name="camera_name" value="$(arg camera_name)"/>
@@ -44,4 +51,11 @@
     <arg name="process_model" value="$(arg process_model)" />
     <arg name="measurement_model" value="$(arg measurement_model)" />
   </include>
+
+  <!-- Convert orientation from quaternion to roll, pitch, yaw -->
+  <node pkg="hippocampus_common" type="pose_to_rpy_node" name="pose_to_rpy_node" output="screen">
+    <param name="pose_msg_type" value="PoseWithCovarianceStamped"/>
+    <remap from="pose" to="mavros/vision_pose/pose_cov"/>
+  </node>
+
 </launch>
