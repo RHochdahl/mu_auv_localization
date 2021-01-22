@@ -31,7 +31,7 @@ class EKFNode(Node):
 
         # get parameters
         self.camera_name = self.get_param("~camera_name", "vertical_camera")
-        self.april_tag_suffix = self.get_param("~april_tag_suffix", "")
+        self.ns = self.get_param("~ns", "")
         self.publish_ekf_states = self.get_param("~publish_ekf_states", "True")
         self.meas_model_type = self.get_param("~measurement_model", "dist")
         self.process_model_type = self.get_param("~process_model", "simple")
@@ -99,7 +99,7 @@ class EKFNode(Node):
                          Imu,
                          self.imu_callback,
                          queue_size=1)
-        rospy.Subscriber("tag_detections" + self.april_tag_suffix,
+        rospy.Subscriber(self.ns + "/tag_detections",
                          AprilTagDetectionArray,
                          self.apriltag_callback,
                          queue_size=1)
@@ -113,7 +113,6 @@ class EKFNode(Node):
 
         # if tags are detected
         if num_tags:
-
             if self.meas_model_type == "dist":
                 # measurement for each tag consists of distance and yaw angle
                 # -> dim_meas = 2
@@ -414,7 +413,6 @@ class EKFNode(Node):
             var_press, sat_press, var_vel
 
     def _load_tag_poses(self):
-
         tag_poses = self.get_param("~tag_poses")
 
         # initialize tags matrix:
